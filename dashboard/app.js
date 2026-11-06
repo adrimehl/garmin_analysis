@@ -55,7 +55,7 @@
   function legend(id, items) { const box = $(id); box.replaceChildren(...items.map(([c, n]) => { const s = el('span'); const i = el('i'); i.style.background = c; s.append(i, document.createTextNode(n)); return s; })); }
 
   // ---------- Tabs ----------
-  const pages = ['ueberblick', 'schlaf', 'training', 'alltag', 'zusammenhaenge'];
+  const pages = ['ueberblick', 'schlaf', 'training', 'alltag', 'zusammenhaenge', 'kalender'];
   function show(p, link = true) {
     if (!pages.includes(p)) return;
     S.page = p;
@@ -183,7 +183,7 @@
 
   // ---------- Training ----------
   const SPORT = [['h_velo', 'Velo (inkl. indoor)', 0], ['h_laufen', 'Laufen', 1], ['h_kraft', 'Kraft', 2], ['h_racket', 'Tennis/Squash', 3], ['h_wandern', 'Wandern', 4], ['h_winter', 'Wintersport', 5], ['h_andere', 'Andere', 6]];
-  const ACOLS = [['date', 'Datum', 'l'], ['name', 'Name', 'l'], ['cat', 'Sportart', 'l'], ['dur_min', 'Dauer min'], ['dist_km', 'km'], ['elev_m', 'Hm'], ['avg_hr', 'Puls Ø'], ['load', 'Last'], ['te_aer', 'Aerob TE'], ['kcal', 'kcal'], ['device', 'Gerät', 'l']];
+  const ACOLS = [['date', 'Datum', 'l'], ['name', 'Name', 'l'], ['cat', 'Sportart', 'l'], ['dur_min', 'Dauer min'], ['dist_km', 'km'], ['elev_m', 'Hm'], ['avg_hr', 'Puls Ø'], ['max_hr', 'Puls max'], ['load', 'Last'], ['te_aer', 'Aerob TE'], ['kcal', 'kcal'], ['device', 'Gerät', 'l']];
   function drawTraining() {
     const m = data('monthly', ['hours', 'vol-h', 'vol-rhr']);
     if (m) {
@@ -336,7 +336,7 @@
     const [k, dir] = S.sort;
     rows.sort((x, y) => { const u = x[k], v = y[k]; if (u == null) return 1; if (v == null) return -1; return (typeof u === 'number' ? u - v : String(u).localeCompare(String(v))) * dir; });
     const tb = el('tbody');
-    const fmt = { dur_min: GK.f0, dist_km: GK.f1, elev_m: GK.f0, avg_hr: GK.f0, load: GK.f0, te_aer: GK.f1, kcal: GK.f0 };
+    const fmt = { dur_min: GK.f0, dist_km: GK.f1, elev_m: GK.f0, avg_hr: GK.f0, max_hr: GK.f0, load: GK.f0, te_aer: GK.f1, kcal: GK.f0 };
     rows.forEach((r) => {
       const tr = el('tr', { 'data-key': r.activity_id });
       ACOLS.forEach(([c, , cl]) => { const v = r[c]; tr.appendChild(el('td', { class: (cl || '') + (c === 'name' ? ' name' : '') || null }, v == null ? '–' : fmt[c] ? fmt[c](v) : String(v))); });
@@ -501,6 +501,35 @@
     }
   }
 
+  // ---------- Kalender ----------
+  const CAL = [
+    ['train_min', 'Trainingsminuten', GK.f0, 0], ['dist_km', 'Distanz (km)', GK.f1, 0], ['kcal', 'Kalorien Training', GK.f0, 1],
+    ['max_hr', 'Max. Puls', GK.f0, 3], ['steps', 'Schritte', GK.f0, 3], ['rhr', 'Ruhepuls', GK.f0, 3],
+    ['sleep_h', 'Schlafdauer (h)', GK.f1, 4], ['sleep_score', 'Schlafscore', GK.f0, 4], ['sleep_stress', 'Stress im Schlaf', GK.f0, 2],
+    ['restless', 'Unruhige Momente', GK.f0, 2], ['stress_awake', 'Stress wach', GK.f0, 2], ['bb_wake', 'Body Battery', GK.f0, 6], ['hrv', 'HRV', GK.f0, 5],
+  ];
+  Object.assign(S, { cal: 'train_min', wgYear: null });
+  function drawCalendar() {
+    const rows = data('calendar', ['cal', 'weekgrid']); if (!rows) return;
+    const avail = CAL.filter(([k]) => rows.some((r) => r[k] != null));
+    if (!avail.length) { done('cal', 'weekgrid'); return; }
+    if (!avail.some(([k]) => k === S.cal)) S.cal = avail[0][0];
+    chips('chips-cal', avail.map(([k, n]) => [k, n]), S.cal, (k) => { S.cal = k; draw(); });
+    const [k, label, f, ci] = avail.find((c) => c[0] === S.cal);
+    const pts = rows.filter((r) => r[k] != null).map((r) => ({ date: r.date, v: r[k] }));
+    const vals = pts.map((p) => p.v).sort(d3.ascending);
+    const lo = d3.quantileSorted(vals, 0.02), hi = d3.quantileSorted(vals, 0.98);
+    const top = GK.resolve(C[ci]), low = d3.interpolateRgb(GK.resolve('var(--color-panel)'), top)(0.12);
+    const color = (v) => d3.interpolateRgb(low, top)(hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 1);
+    legend('lg-cal', [[color(lo), `${f(lo)} oder weniger`], [color((lo + hi) / 2), f((lo + hi) / 2)], [color(hi), `${f(hi)} oder mehr`], ['var(--color-border-line)', 'keine Daten']]);
+    const years = [...new Set(pts.map((p) => +p.date.slice(0, 4)))].sort((a, b) => b - a);
+    GK.calendar($('cal'), { rows: pts, years, color, fmt: f, label });
+    if (!years.includes(S.wgYear)) S.wgYear = years[0];
+    chips('chips-wg-year', years.map((y) => [y, String(y)]), S.wgYear, (y) => { S.wgYear = y; draw(); });
+    GK.weekgrid($('weekgrid'), { rows: pts, year: S.wgYear, color, fmt: f, label });
+    done('cal', 'weekgrid');
+  }
+
   function draw() {
     drawHead();
     if (S.page === 'ueberblick') drawOverview();
@@ -508,6 +537,7 @@
     if (S.page === 'training') drawTraining();
     if (S.page === 'alltag') drawDaily();
     if (S.page === 'zusammenhaenge') { drawLinks(); drawMore(); }
+    if (S.page === 'kalender') drawCalendar();
   }
 
   const h = location.hash.slice(1);

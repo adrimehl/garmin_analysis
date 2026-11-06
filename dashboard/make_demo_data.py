@@ -97,6 +97,7 @@ def main(out_dir):
             activities.append({
                 'activity_id': str(aid), 'date': ds, 'name': rnd.choice(NAMES[cat]), 'cat': cat, 'type': gtype,
                 'dur_min': r1(dur), 'dist_km': r1(dist, 2), 'elev_m': r1(elev, 0), 'avg_hr': r1(avg_hr, 0),
+                'max_hr': r1(avg_hr + rnd.uniform(8, 30), 0),
                 'load': r1(dur * (avg_hr - 60) / 60, 0) if cat != 'Gehen' else None,
                 'te_aer': r1(min(5, 1 + vig / 25 + rnd.uniform(0, 0.8)), 1) if cat != 'Gehen' else None,
                 'kcal': r1(dur * (avg_hr - 40) / 10, 0), 'device': 'Demo-Uhr', 'speed_kmh': r1(speed_kmh, 2),
@@ -137,6 +138,7 @@ def main(out_dir):
             'rhr': r1(rhr), 'stress_awake': r1(stress_awake), 'stress_high_min': r1(max(0, rnd.gauss(stress_awake * 1.5, 15)), 0),
             'sleep_h': r1(sleep_h, 2), 'deep_h': r1(deep_h, 2), 'rem_h': r1(rem_h, 2), 'sleep_score': r1(sleep_score, 0),
             'sleep_stress': r1(max(3, rnd.gauss(16 + 8 * hard, 4))), 'awakenings': max(0, int(rnd.gauss(2 + 2 * hard, 1.2))),
+            'restless': max(5, int(rnd.gauss(45 + 15 * hard, 8))),
             'bedtime': r1(bedtime, 2), 'waketime': r1(waketime, 2),
             'bb_wake': r1(max(10, min(100, rnd.gauss(75 + 4 * (sleep_h - 7.3) - 18 * hard, 9))), 0) if has_bb else None,
             'hrv': r1(rnd.gauss(55 + fitness * 3 - 9 * hard, 6), 0) if has_hrv else None,

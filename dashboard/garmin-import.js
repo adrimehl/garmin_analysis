@@ -164,6 +164,7 @@ window.GarminImport = (() => {
         dist_km: round(distKm, 2),
         elev_m: num(a.elevationGain) != null ? round(a.elevationGain / 100) : null,
         avg_hr: round(num(a.avgHr)),
+        max_hr: round(num(a.maxHr)),
         load: round(num(a.activityTrainingLoad)),
         te_aer: round(num(a.aerobicTrainingEffect), 1),
         kcal: num(a.calories) != null ? round(a.calories / 4.184) : null,
@@ -232,7 +233,7 @@ window.GarminImport = (() => {
         im_mod: pos(u.moderateIntensityMinutes),
         im_vig: pos(u.vigorousIntensityMinutes),
         kcal_active: pos(u.activeKilocalories),
-        sleep_h: null, deep_h: null, rem_h: null, sleep_score: null, sleep_stress: null, awakenings: null, bedtime: null, waketime: null,
+        sleep_h: null, deep_h: null, rem_h: null, sleep_score: null, sleep_stress: null, awakenings: null, restless: null, bedtime: null, waketime: null,
       };
       if (s) {
         const deep = pos(s.deepSleepSeconds) || 0, light = pos(s.lightSleepSeconds) || 0, rem = pos(s.remSleepSeconds) || 0;
@@ -245,6 +246,7 @@ window.GarminImport = (() => {
           sleep_score: s.sleepScores ? pos(s.sleepScores.overallScore) : null,
           sleep_stress: round(pos(s.avgSleepStress), 1),
           awakenings: pos(s.awakeCount),
+          restless: pos(s.restlessMomentCount),
         });
         if (isFinite(st)) { let b = hourOf(st + off * 3600000); if (b < 12) b += 24; row.bedtime = round(b, 2); }
         if (isFinite(en)) row.waketime = round(hourOf(en + off * 3600000), 2);

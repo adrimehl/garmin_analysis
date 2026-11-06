@@ -1,7 +1,7 @@
 # Garmin Langzeitanalyse – Dashboard
 
-Interaktives Dashboard mit fünf Bereichen: **Überblick**, **Schlaf & Erholung**, **Training & Fitness**,
-**Alltag & Stress** und **Zusammenhänge** (Training → Schlaf, Erholungskurve, Korrelationsmatrix usw.).
+Interaktives Dashboard mit sechs Bereichen: **Überblick**, **Schlaf & Erholung**, **Training & Fitness**,
+**Alltag & Stress**, **Zusammenhänge** (Training → Schlaf, Erholungskurve, Korrelationsmatrix usw.) und **Kalender** (Jahreskalender- und Wochen-Heatmaps wie in der Python-Version).
 
 Ursprünglich als Artefakt auf claude.ai entstanden („Garmin Langzeitanalyse“). Die Dateien
 `index.html`, `kit.js`, `calcs.js` und `app.js` sind unverändert übernommen. Die Laufzeit,

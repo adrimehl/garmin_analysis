@@ -406,3 +406,31 @@ dash.calc('before_events', {
     return out;
   },
 });
+
+// ---------- Kalender ----------
+dash.calc('calendar', {
+  inputs: ['daily', 'activities'],
+  title: 'Kalenderwerte pro Tag',
+  description: 'Ein Eintrag pro Tag für die Kalender-Heatmaps: Tageswerte und Schlaf aus den Tageswerten, Distanz, Kalorien und max. Puls aus den Trainings des Tages (ohne Gehen).',
+  fn: (daily, activities) => {
+    const acts = new Map();
+    activities.forEach((a) => {
+      if (a.cat === 'Gehen') return;
+      const o = acts.get(a.date) || { dist_km: 0, kcal: 0, max_hr: null };
+      o.dist_km += a.dist_km || 0; o.kcal += a.kcal || 0;
+      if (a.max_hr != null) o.max_hr = Math.max(o.max_hr || 0, a.max_hr);
+      acts.set(a.date, o);
+    });
+    const keys = ['train_min', 'steps', 'rhr', 'sleep_h', 'sleep_score', 'sleep_stress', 'restless', 'stress_awake', 'bb_wake', 'hrv'];
+    return daily.map((r) => {
+      const o = { date: r.date };
+      keys.forEach((k) => { o[k] = r[k] ?? null; });
+      const a = acts.get(r.date);
+      const trained = r.train_min != null;
+      o.dist_km = a ? a.dist_km : trained ? 0 : null;
+      o.kcal = a ? a.kcal : trained ? 0 : null;
+      o.max_hr = a ? a.max_hr : null;
+      return o;
+    });
+  },
+});

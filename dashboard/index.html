@@ -88,6 +88,7 @@
     <button class="gx-tab" role="tab" id="tab-training" data-page="training" aria-selected="false">Training &amp; Fitness</button>
     <button class="gx-tab" role="tab" id="tab-alltag" data-page="alltag" aria-selected="false">Alltag &amp; Stress</button>
     <button class="gx-tab" role="tab" id="tab-zusammenhaenge" data-page="zusammenhaenge" aria-selected="false">Zusammenhänge</button>
+    <button class="gx-tab" role="tab" id="tab-kalender" data-page="kalender" aria-selected="false">Kalender</button>
   </nav>
 
   <!-- ÜBERBLICK -->
@@ -248,6 +249,19 @@
         <div class="gx-chart tall" id="scatter" data-source="daily"></div>
         <p class="gx-note">Punkte: Einzeltage. Linie: Mittel von Y in fünf gleich grossen Gruppen nach X.</p></div>
     </div>
+  </section>
+
+  <!-- KALENDER -->
+  <section class="gx-page" id="kalender" role="tabpanel" hidden>
+    <div class="gx-card" id="card-cal"><h3>Jahreskalender</h3>
+      <p class="gx-note">Jedes Kästchen ist ein Tag: Spalten sind Wochen, Zeilen Montag bis Sonntag. Je kräftiger die Farbe, desto höher der Wert; grau heisst keine Daten. Die Farbskala reicht vom 2. bis zum 98. Perzentil, damit Ausreisser nicht alles andere blass machen. Fahre über einen Tag für den genauen Wert.</p>
+      <div class="gx-chips" id="chips-cal"></div>
+      <div class="gx-legend" id="lg-cal"></div>
+      <div class="gx-small"><div class="gx-chart tall" id="cal" data-source="calendar"></div></div></div>
+    <div class="gx-card" id="card-weekgrid"><h3>Wochenraster</h3>
+      <p class="gx-note">Dieselbe Kennzahl für ein Jahr als Tabelle: Zeilen sind Kalenderwochen, Spalten Wochentage, mit dem Wert im Feld.</p>
+      <div class="gx-chips" id="chips-wg-year"></div>
+      <div class="gx-small"><div class="gx-chart tall" id="weekgrid" data-source="calendar"></div></div></div>
   </section>
 </div>
 <script src="kit.js"></script>

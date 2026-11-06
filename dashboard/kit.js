@@ -234,5 +234,73 @@
     return bins;
   };
 
+  // Jahreskalender: ein Kästchen pro Tag, Spalten = Wochen, Zeilen = Mo..So. rows: [{date, v}]
+  GK.calendar = (el, o) => {
+    el.replaceChildren(); el.style.position = 'relative';
+    const avail = Math.max(240, el.parentElement.clientWidth || el.clientWidth || 600);
+    const left = 40, top = 16, gapY = 16;
+    const cell = Math.max(9, Math.min(16, Math.floor((avail - left - 4) / 54)));
+    const W = left + cell * 54, yearH = top + cell * 7, H = o.years.length * (yearH + gapY);
+    const svg = d3.select(el).append('svg').attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`)
+      .style('display', 'block').attr('font-family', 'var(--font-anthropic-sans)');
+    const tip = d3.select(el).append('div').attr('class', 'gk-tip').style('opacity', 0);
+    const map = new Map(o.rows.map((r) => [r.date, r.v]));
+    const days = ['Mo', '', 'Mi', '', 'Fr', '', 'So'];
+    o.years.forEach((yr, yi) => {
+      const g = svg.append('g').attr('transform', `translate(0,${yi * (yearH + gapY)})`);
+      g.append('text').attr('x', 0).attr('y', top - 4).attr('font-size', 12).attr('font-weight', 600).attr('fill', css('--color-fg')).text(yr);
+      days.forEach((d, i) => d && g.append('text').attr('x', left - 6).attr('y', top + i * cell + cell - 3).attr('text-anchor', 'end').attr('font-size', 9).attr('fill', css('--color-fg-muted')).text(d));
+      const jan1 = Date.UTC(yr, 0, 1), off = (new Date(jan1).getUTCDay() + 6) % 7;
+      for (let t = jan1; new Date(t).getUTCFullYear() === yr; t += 864e5) {
+        const d = new Date(t), doy = Math.round((t - jan1) / 864e5);
+        const col = Math.floor((doy + off) / 7), row = (d.getUTCDay() + 6) % 7;
+        const v = map.get(d.toISOString().slice(0, 10));
+        if (d.getUTCDate() === 1 && col < 52) g.append('text').attr('x', left + col * cell).attr('y', top - 4).attr('font-size', 9).attr('fill', css('--color-fg-muted')).text(GK.months[d.getUTCMonth()]);
+        g.append('rect').attr('x', left + col * cell).attr('y', top + row * cell).attr('width', cell - 2).attr('height', cell - 2).attr('rx', 2)
+          .attr('fill', v == null ? css('--color-border-line') : o.color(v)).attr('opacity', v == null ? 0.55 : 1)
+          .on('pointermove', (ev) => { const [px, py] = d3.pointer(ev, el); showTip(tip, el, px, py, tipRows(GK.dfmt(d), [{ name: o.label, value: v == null ? 'keine Daten' : o.fmt(v) }])); })
+          .on('pointerleave', () => tip.style('opacity', 0));
+      }
+    });
+  };
+
+  // Wochenraster eines Jahres: Zeilen = Kalenderwochen, Spalten = Mo..So, Wert im Feld. rows: [{date, v}]
+  GK.weekgrid = (el, o) => {
+    el.replaceChildren(); el.style.position = 'relative';
+    const map = new Map(o.rows.map((r) => [r.date, r.v]));
+    const jan1 = Date.UTC(o.year, 0, 1), dec31 = Date.UTC(o.year, 11, 31);
+    const weeks = [];
+    for (let m = jan1 - ((new Date(jan1).getUTCDay() + 6) % 7) * 864e5; m <= dec31; m += 7 * 864e5) weeks.push(m);
+    const avail = Math.max(300, el.parentElement.clientWidth || el.clientWidth || 600);
+    const left = 96, top = 22, rowH = 20;
+    const cw = Math.max(40, Math.min(84, Math.floor((avail - left) / 7)));
+    const W = left + cw * 7, H = top + rowH * weeks.length + 2;
+    const svg = d3.select(el).append('svg').attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`)
+      .style('display', 'block').attr('font-family', 'var(--font-anthropic-sans)');
+    const tip = d3.select(el).append('div').attr('class', 'gk-tip').style('opacity', 0);
+    ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].forEach((d, i) => svg.append('text').attr('x', left + i * cw + cw / 2).attr('y', 14).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', css('--color-fg-muted')).text(d));
+    const textOn = (c) => (d3.lab(c).l < 58 ? '#ffffff' : '#1f1e1c');
+    weeks.forEach((m, wi) => {
+      const y = top + wi * rowH;
+      const thu = new Date(m + 3 * 864e5);
+      const kw = 1 + Math.floor((thu - Date.UTC(thu.getUTCFullYear(), 0, 1)) / (7 * 864e5));
+      const mon = new Date(m);
+      svg.append('text').attr('x', 0).attr('y', y + rowH / 2 + 4).attr('font-size', 11).attr('fill', css('--color-fg-muted'))
+        .text(`KW ${String(kw).padStart(2, '0')} · ${mon.getUTCDate()}. ${GK.months[mon.getUTCMonth()]}`);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(m + i * 864e5);
+        if (d.getUTCFullYear() !== o.year) continue;
+        const v = map.get(d.toISOString().slice(0, 10));
+        const fill = v == null ? null : o.color(v);
+        svg.append('rect').attr('x', left + i * cw + 1).attr('y', y + 1).attr('width', cw - 2).attr('height', rowH - 2).attr('rx', 3)
+          .attr('fill', fill || css('--color-border-line')).attr('opacity', fill ? 1 : 0.4)
+          .on('pointermove', (ev) => { const [px, py] = d3.pointer(ev, el); showTip(tip, el, px, py, tipRows(GK.dfmt(d), [{ name: o.label, value: v == null ? 'keine Daten' : o.fmt(v) }])); })
+          .on('pointerleave', () => tip.style('opacity', 0));
+        if (fill) svg.append('text').attr('x', left + i * cw + cw / 2).attr('y', y + rowH / 2 + 4).attr('text-anchor', 'middle').attr('font-size', 10.5)
+          .attr('fill', textOn(fill)).style('pointer-events', 'none').style('font-variant-numeric', 'tabular-nums').text(o.fmt(v));
+      }
+    });
+  };
+
   window.GK = GK;
 })();

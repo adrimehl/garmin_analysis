@@ -268,6 +268,7 @@ window.GarminImport = (() => {
         dist_km: round(distKm, 2),
         elev_m: num(a.elevationGain) != null ? round(a.elevationGain / 100) : null,
         avg_hr: round(num(a.avgHr)),
+        max_hr: round(num(a.maxHr)),
         load: round(num(a.activityTrainingLoad)),
         te_aer: round(num(a.aerobicTrainingEffect), 1),
         kcal: num(a.calories) != null ? round(a.calories / 4.184) : null,
@@ -336,7 +337,7 @@ window.GarminImport = (() => {
         im_mod: pos(u.moderateIntensityMinutes),
         im_vig: pos(u.vigorousIntensityMinutes),
         kcal_active: pos(u.activeKilocalories),
-        sleep_h: null, deep_h: null, rem_h: null, sleep_score: null, sleep_stress: null, awakenings: null, bedtime: null, waketime: null,
+        sleep_h: null, deep_h: null, rem_h: null, sleep_score: null, sleep_stress: null, awakenings: null, restless: null, bedtime: null, waketime: null,
       };
       if (s) {
         const deep = pos(s.deepSleepSeconds) || 0, light = pos(s.lightSleepSeconds) || 0, rem = pos(s.remSleepSeconds) || 0;
@@ -349,6 +350,7 @@ window.GarminImport = (() => {
           sleep_score: s.sleepScores ? pos(s.sleepScores.overallScore) : null,
           sleep_stress: round(pos(s.avgSleepStress), 1),
           awakenings: pos(s.awakeCount),
+          restless: pos(s.restlessMomentCount),
         });
         if (isFinite(st)) { let b = hourOf(st + off * 3600000); if (b < 12) b += 24; row.bedtime = round(b, 2); }
         if (isFinite(en)) row.waketime = round(hourOf(en + off * 3600000), 2);
@@ -736,6 +738,7 @@ window.GarminImport = (() => {
     <button class="gx-tab" role="tab" id="tab-training" data-page="training" aria-selected="false">Training &amp; Fitness</button>
     <button class="gx-tab" role="tab" id="tab-alltag" data-page="alltag" aria-selected="false">Alltag &amp; Stress</button>
     <button class="gx-tab" role="tab" id="tab-zusammenhaenge" data-page="zusammenhaenge" aria-selected="false">Zusammenhänge</button>
+    <button class="gx-tab" role="tab" id="tab-kalender" data-page="kalender" aria-selected="false">Kalender</button>
   </nav>
 
   <!-- ÜBERBLICK -->
@@ -896,6 +899,19 @@ window.GarminImport = (() => {
         <div class="gx-chart tall" id="scatter" data-source="daily"></div>
         <p class="gx-note">Punkte: Einzeltage. Linie: Mittel von Y in fünf gleich grossen Gruppen nach X.</p></div>
     </div>
+  </section>
+
+  <!-- KALENDER -->
+  <section class="gx-page" id="kalender" role="tabpanel" hidden>
+    <div class="gx-card" id="card-cal"><h3>Jahreskalender</h3>
+      <p class="gx-note">Jedes Kästchen ist ein Tag: Spalten sind Wochen, Zeilen Montag bis Sonntag. Je kräftiger die Farbe, desto höher der Wert; grau heisst keine Daten. Die Farbskala reicht vom 2. bis zum 98. Perzentil, damit Ausreisser nicht alles andere blass machen. Fahre über einen Tag für den genauen Wert.</p>
+      <div class="gx-chips" id="chips-cal"></div>
+      <div class="gx-legend" id="lg-cal"></div>
+      <div class="gx-small"><div class="gx-chart tall" id="cal" data-source="calendar"></div></div></div>
+    <div class="gx-card" id="card-weekgrid"><h3>Wochenraster</h3>
+      <p class="gx-note">Dieselbe Kennzahl für ein Jahr als Tabelle: Zeilen sind Kalenderwochen, Spalten Wochentage, mit dem Wert im Feld.</p>
+      <div class="gx-chips" id="chips-wg-year"></div>
+      <div class="gx-small"><div class="gx-chart tall" id="weekgrid" data-source="calendar"></div></div></div>
   </section>
 </div>
 <script>
@@ -1133,6 +1149,74 @@ window.GarminImport = (() => {
     });
     o.bins = bins;
     return bins;
+  };
+
+  // Jahreskalender: ein Kästchen pro Tag, Spalten = Wochen, Zeilen = Mo..So. rows: [{date, v}]
+  GK.calendar = (el, o) => {
+    el.replaceChildren(); el.style.position = 'relative';
+    const avail = Math.max(240, el.parentElement.clientWidth || el.clientWidth || 600);
+    const left = 40, top = 16, gapY = 16;
+    const cell = Math.max(9, Math.min(16, Math.floor((avail - left - 4) / 54)));
+    const W = left + cell * 54, yearH = top + cell * 7, H = o.years.length * (yearH + gapY);
+    const svg = d3.select(el).append('svg').attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`)
+      .style('display', 'block').attr('font-family', 'var(--font-anthropic-sans)');
+    const tip = d3.select(el).append('div').attr('class', 'gk-tip').style('opacity', 0);
+    const map = new Map(o.rows.map((r) => [r.date, r.v]));
+    const days = ['Mo', '', 'Mi', '', 'Fr', '', 'So'];
+    o.years.forEach((yr, yi) => {
+      const g = svg.append('g').attr('transform', `translate(0,${yi * (yearH + gapY)})`);
+      g.append('text').attr('x', 0).attr('y', top - 4).attr('font-size', 12).attr('font-weight', 600).attr('fill', css('--color-fg')).text(yr);
+      days.forEach((d, i) => d && g.append('text').attr('x', left - 6).attr('y', top + i * cell + cell - 3).attr('text-anchor', 'end').attr('font-size', 9).attr('fill', css('--color-fg-muted')).text(d));
+      const jan1 = Date.UTC(yr, 0, 1), off = (new Date(jan1).getUTCDay() + 6) % 7;
+      for (let t = jan1; new Date(t).getUTCFullYear() === yr; t += 864e5) {
+        const d = new Date(t), doy = Math.round((t - jan1) / 864e5);
+        const col = Math.floor((doy + off) / 7), row = (d.getUTCDay() + 6) % 7;
+        const v = map.get(d.toISOString().slice(0, 10));
+        if (d.getUTCDate() === 1 && col < 52) g.append('text').attr('x', left + col * cell).attr('y', top - 4).attr('font-size', 9).attr('fill', css('--color-fg-muted')).text(GK.months[d.getUTCMonth()]);
+        g.append('rect').attr('x', left + col * cell).attr('y', top + row * cell).attr('width', cell - 2).attr('height', cell - 2).attr('rx', 2)
+          .attr('fill', v == null ? css('--color-border-line') : o.color(v)).attr('opacity', v == null ? 0.55 : 1)
+          .on('pointermove', (ev) => { const [px, py] = d3.pointer(ev, el); showTip(tip, el, px, py, tipRows(GK.dfmt(d), [{ name: o.label, value: v == null ? 'keine Daten' : o.fmt(v) }])); })
+          .on('pointerleave', () => tip.style('opacity', 0));
+      }
+    });
+  };
+
+  // Wochenraster eines Jahres: Zeilen = Kalenderwochen, Spalten = Mo..So, Wert im Feld. rows: [{date, v}]
+  GK.weekgrid = (el, o) => {
+    el.replaceChildren(); el.style.position = 'relative';
+    const map = new Map(o.rows.map((r) => [r.date, r.v]));
+    const jan1 = Date.UTC(o.year, 0, 1), dec31 = Date.UTC(o.year, 11, 31);
+    const weeks = [];
+    for (let m = jan1 - ((new Date(jan1).getUTCDay() + 6) % 7) * 864e5; m <= dec31; m += 7 * 864e5) weeks.push(m);
+    const avail = Math.max(300, el.parentElement.clientWidth || el.clientWidth || 600);
+    const left = 96, top = 22, rowH = 20;
+    const cw = Math.max(40, Math.min(84, Math.floor((avail - left) / 7)));
+    const W = left + cw * 7, H = top + rowH * weeks.length + 2;
+    const svg = d3.select(el).append('svg').attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`)
+      .style('display', 'block').attr('font-family', 'var(--font-anthropic-sans)');
+    const tip = d3.select(el).append('div').attr('class', 'gk-tip').style('opacity', 0);
+    ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].forEach((d, i) => svg.append('text').attr('x', left + i * cw + cw / 2).attr('y', 14).attr('text-anchor', 'middle').attr('font-size', 11).attr('fill', css('--color-fg-muted')).text(d));
+    const textOn = (c) => (d3.lab(c).l < 58 ? '#ffffff' : '#1f1e1c');
+    weeks.forEach((m, wi) => {
+      const y = top + wi * rowH;
+      const thu = new Date(m + 3 * 864e5);
+      const kw = 1 + Math.floor((thu - Date.UTC(thu.getUTCFullYear(), 0, 1)) / (7 * 864e5));
+      const mon = new Date(m);
+      svg.append('text').attr('x', 0).attr('y', y + rowH / 2 + 4).attr('font-size', 11).attr('fill', css('--color-fg-muted'))
+        .text(`KW ${String(kw).padStart(2, '0')} · ${mon.getUTCDate()}. ${GK.months[mon.getUTCMonth()]}`);
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(m + i * 864e5);
+        if (d.getUTCFullYear() !== o.year) continue;
+        const v = map.get(d.toISOString().slice(0, 10));
+        const fill = v == null ? null : o.color(v);
+        svg.append('rect').attr('x', left + i * cw + 1).attr('y', y + 1).attr('width', cw - 2).attr('height', rowH - 2).attr('rx', 3)
+          .attr('fill', fill || css('--color-border-line')).attr('opacity', fill ? 1 : 0.4)
+          .on('pointermove', (ev) => { const [px, py] = d3.pointer(ev, el); showTip(tip, el, px, py, tipRows(GK.dfmt(d), [{ name: o.label, value: v == null ? 'keine Daten' : o.fmt(v) }])); })
+          .on('pointerleave', () => tip.style('opacity', 0));
+        if (fill) svg.append('text').attr('x', left + i * cw + cw / 2).attr('y', y + rowH / 2 + 4).attr('text-anchor', 'middle').attr('font-size', 10.5)
+          .attr('fill', textOn(fill)).style('pointer-events', 'none').style('font-variant-numeric', 'tabular-nums').text(o.fmt(v));
+      }
+    });
   };
 
   window.GK = GK;
@@ -1549,6 +1633,34 @@ dash.calc('before_events', {
   },
 });
 
+// ---------- Kalender ----------
+dash.calc('calendar', {
+  inputs: ['daily', 'activities'],
+  title: 'Kalenderwerte pro Tag',
+  description: 'Ein Eintrag pro Tag für die Kalender-Heatmaps: Tageswerte und Schlaf aus den Tageswerten, Distanz, Kalorien und max. Puls aus den Trainings des Tages (ohne Gehen).',
+  fn: (daily, activities) => {
+    const acts = new Map();
+    activities.forEach((a) => {
+      if (a.cat === 'Gehen') return;
+      const o = acts.get(a.date) || { dist_km: 0, kcal: 0, max_hr: null };
+      o.dist_km += a.dist_km || 0; o.kcal += a.kcal || 0;
+      if (a.max_hr != null) o.max_hr = Math.max(o.max_hr || 0, a.max_hr);
+      acts.set(a.date, o);
+    });
+    const keys = ['train_min', 'steps', 'rhr', 'sleep_h', 'sleep_score', 'sleep_stress', 'restless', 'stress_awake', 'bb_wake', 'hrv'];
+    return daily.map((r) => {
+      const o = { date: r.date };
+      keys.forEach((k) => { o[k] = r[k] ?? null; });
+      const a = acts.get(r.date);
+      const trained = r.train_min != null;
+      o.dist_km = a ? a.dist_km : trained ? 0 : null;
+      o.kcal = a ? a.kcal : trained ? 0 : null;
+      o.max_hr = a ? a.max_hr : null;
+      return o;
+    });
+  },
+});
+
 </script>
 <script>
 // Darstellung des Dashboards. Daten kommen ausschliesslich über dash.data().
@@ -1608,7 +1720,7 @@ dash.calc('before_events', {
   function legend(id, items) { const box = $(id); box.replaceChildren(...items.map(([c, n]) => { const s = el('span'); const i = el('i'); i.style.background = c; s.append(i, document.createTextNode(n)); return s; })); }
 
   // ---------- Tabs ----------
-  const pages = ['ueberblick', 'schlaf', 'training', 'alltag', 'zusammenhaenge'];
+  const pages = ['ueberblick', 'schlaf', 'training', 'alltag', 'zusammenhaenge', 'kalender'];
   function show(p, link = true) {
     if (!pages.includes(p)) return;
     S.page = p;
@@ -1736,7 +1848,7 @@ dash.calc('before_events', {
 
   // ---------- Training ----------
   const SPORT = [['h_velo', 'Velo (inkl. indoor)', 0], ['h_laufen', 'Laufen', 1], ['h_kraft', 'Kraft', 2], ['h_racket', 'Tennis/Squash', 3], ['h_wandern', 'Wandern', 4], ['h_winter', 'Wintersport', 5], ['h_andere', 'Andere', 6]];
-  const ACOLS = [['date', 'Datum', 'l'], ['name', 'Name', 'l'], ['cat', 'Sportart', 'l'], ['dur_min', 'Dauer min'], ['dist_km', 'km'], ['elev_m', 'Hm'], ['avg_hr', 'Puls Ø'], ['load', 'Last'], ['te_aer', 'Aerob TE'], ['kcal', 'kcal'], ['device', 'Gerät', 'l']];
+  const ACOLS = [['date', 'Datum', 'l'], ['name', 'Name', 'l'], ['cat', 'Sportart', 'l'], ['dur_min', 'Dauer min'], ['dist_km', 'km'], ['elev_m', 'Hm'], ['avg_hr', 'Puls Ø'], ['max_hr', 'Puls max'], ['load', 'Last'], ['te_aer', 'Aerob TE'], ['kcal', 'kcal'], ['device', 'Gerät', 'l']];
   function drawTraining() {
     const m = data('monthly', ['hours', 'vol-h', 'vol-rhr']);
     if (m) {
@@ -1889,7 +2001,7 @@ dash.calc('before_events', {
     const [k, dir] = S.sort;
     rows.sort((x, y) => { const u = x[k], v = y[k]; if (u == null) return 1; if (v == null) return -1; return (typeof u === 'number' ? u - v : String(u).localeCompare(String(v))) * dir; });
     const tb = el('tbody');
-    const fmt = { dur_min: GK.f0, dist_km: GK.f1, elev_m: GK.f0, avg_hr: GK.f0, load: GK.f0, te_aer: GK.f1, kcal: GK.f0 };
+    const fmt = { dur_min: GK.f0, dist_km: GK.f1, elev_m: GK.f0, avg_hr: GK.f0, max_hr: GK.f0, load: GK.f0, te_aer: GK.f1, kcal: GK.f0 };
     rows.forEach((r) => {
       const tr = el('tr', { 'data-key': r.activity_id });
       ACOLS.forEach(([c, , cl]) => { const v = r[c]; tr.appendChild(el('td', { class: (cl || '') + (c === 'name' ? ' name' : '') || null }, v == null ? '–' : fmt[c] ? fmt[c](v) : String(v))); });
@@ -2054,6 +2166,35 @@ dash.calc('before_events', {
     }
   }
 
+  // ---------- Kalender ----------
+  const CAL = [
+    ['train_min', 'Trainingsminuten', GK.f0, 0], ['dist_km', 'Distanz (km)', GK.f1, 0], ['kcal', 'Kalorien Training', GK.f0, 1],
+    ['max_hr', 'Max. Puls', GK.f0, 3], ['steps', 'Schritte', GK.f0, 3], ['rhr', 'Ruhepuls', GK.f0, 3],
+    ['sleep_h', 'Schlafdauer (h)', GK.f1, 4], ['sleep_score', 'Schlafscore', GK.f0, 4], ['sleep_stress', 'Stress im Schlaf', GK.f0, 2],
+    ['restless', 'Unruhige Momente', GK.f0, 2], ['stress_awake', 'Stress wach', GK.f0, 2], ['bb_wake', 'Body Battery', GK.f0, 6], ['hrv', 'HRV', GK.f0, 5],
+  ];
+  Object.assign(S, { cal: 'train_min', wgYear: null });
+  function drawCalendar() {
+    const rows = data('calendar', ['cal', 'weekgrid']); if (!rows) return;
+    const avail = CAL.filter(([k]) => rows.some((r) => r[k] != null));
+    if (!avail.length) { done('cal', 'weekgrid'); return; }
+    if (!avail.some(([k]) => k === S.cal)) S.cal = avail[0][0];
+    chips('chips-cal', avail.map(([k, n]) => [k, n]), S.cal, (k) => { S.cal = k; draw(); });
+    const [k, label, f, ci] = avail.find((c) => c[0] === S.cal);
+    const pts = rows.filter((r) => r[k] != null).map((r) => ({ date: r.date, v: r[k] }));
+    const vals = pts.map((p) => p.v).sort(d3.ascending);
+    const lo = d3.quantileSorted(vals, 0.02), hi = d3.quantileSorted(vals, 0.98);
+    const top = GK.resolve(C[ci]), low = d3.interpolateRgb(GK.resolve('var(--color-panel)'), top)(0.12);
+    const color = (v) => d3.interpolateRgb(low, top)(hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 1);
+    legend('lg-cal', [[color(lo), `${f(lo)} oder weniger`], [color((lo + hi) / 2), f((lo + hi) / 2)], [color(hi), `${f(hi)} oder mehr`], ['var(--color-border-line)', 'keine Daten']]);
+    const years = [...new Set(pts.map((p) => +p.date.slice(0, 4)))].sort((a, b) => b - a);
+    GK.calendar($('cal'), { rows: pts, years, color, fmt: f, label });
+    if (!years.includes(S.wgYear)) S.wgYear = years[0];
+    chips('chips-wg-year', years.map((y) => [y, String(y)]), S.wgYear, (y) => { S.wgYear = y; draw(); });
+    GK.weekgrid($('weekgrid'), { rows: pts, year: S.wgYear, color, fmt: f, label });
+    done('cal', 'weekgrid');
+  }
+
   function draw() {
     drawHead();
     if (S.page === 'ueberblick') drawOverview();
@@ -2061,6 +2202,7 @@ dash.calc('before_events', {
     if (S.page === 'training') drawTraining();
     if (S.page === 'alltag') drawDaily();
     if (S.page === 'zusammenhaenge') { drawLinks(); drawMore(); }
+    if (S.page === 'kalender') drawCalendar();
   }
 
   const h = location.hash.slice(1);
