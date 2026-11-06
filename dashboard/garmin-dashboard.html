@@ -2264,9 +2264,9 @@ dash.calc('calendar', {
     const top = GK.resolve(C[ci]), low = d3.interpolateRgb(GK.resolve('var(--color-panel)'), top)(0.12);
     const color = (v) => d3.interpolateRgb(low, top)(hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 1);
     legend('lg-cal', [[color(lo), `${f(lo)} oder weniger`], [color((lo + hi) / 2), f((lo + hi) / 2)], [color(hi), `${f(hi)} oder mehr`], ['var(--color-border-line)', 'keine Daten']]);
-    const years = [...new Set(pts.map((p) => +p.date.slice(0, 4)))].sort((a, b) => b - a);
+    const years = [...new Set(pts.map((p) => +p.date.slice(0, 4)))].sort((a, b) => a - b);
     GK.calendar($('cal'), { rows: pts, years, color, fmt: f, label });
-    if (!years.includes(S.wgYear)) S.wgYear = years[0];
+    if (!years.includes(S.wgYear)) S.wgYear = years[years.length - 1];
     chips('chips-wg-year', years.map((y) => [y, String(y)]), S.wgYear, (y) => { S.wgYear = y; draw(); });
     GK.weekgrid($('weekgrid'), { rows: pts, year: S.wgYear, color, fmt: f, label });
     done('cal', 'weekgrid');
