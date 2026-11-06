@@ -131,37 +131,88 @@
   }
 
   // ---------- Hinweisleiste & Dateiauswahl ----------
+  const el = (tag, attrs = {}, text) => {
+    const e = document.createElement(tag);
+    Object.entries(attrs).forEach(([k, v]) => { if (k in e) e[k] = v; else e.setAttribute(k, v); });
+    if (text != null) e.textContent = text;
+    return e;
+  };
+
   function banner(kind, found) {
     const box = document.getElementById('dash-banner');
     if (!box) return;
     box.hidden = false;
     box.replaceChildren();
-    const p = (text) => { const e = document.createElement('p'); e.textContent = text; box.appendChild(e); return e; };
+    const p = (text) => box.appendChild(el('p', {}, text));
     if (kind === 'demo') {
-      p('Angezeigt werden synthetische Demo-Daten. Lege deine eigenen JSON-Dateien in den Ordner dashboard/data/ oder wähle sie hier aus:');
+      p('Angezeigt werden synthetische Demo-Daten. Lade deinen Garmin-Export, um deine eigenen Daten zu sehen. Er wird nur hier im Browser ausgewertet und nirgends hochgeladen.');
     } else if (kind === 'partial') {
       const missing = Object.keys(DATASETS).filter((id) => !(id in found)).map((id) => DATASETS[id]);
       p('Diese Dateien fehlen in dashboard/data/: ' + missing.join(', ') + '. Die betroffenen Diagramme bleiben leer.');
+      return;
     } else {
-      p('Keine Daten gefunden. Starte im Ordner dashboard einen lokalen Server (python -m http.server) oder wähle die JSON-Dateien hier aus:');
+      p('Keine Daten gefunden. Lade deinen Garmin-Export (ZIP oder entpackter Ordner) oder die fünf aufbereiteten JSON-Dateien. Alles bleibt in deinem Browser.');
     }
-    if (kind === 'partial') return;
-    const label = document.createElement('label');
-    const input = document.createElement('input');
-    input.type = 'file'; input.multiple = true; input.accept = '.json,application/json';
-    label.append(input, document.createTextNode(Object.values(DATASETS).join(', ')));
-    input.addEventListener('change', async () => {
-      const found = {};
-      for (const f of input.files) {
+    const status = el('p', { className: 'dash-status' });
+    const zip = el('input', { type: 'file', multiple: true, accept: '.zip,.json,application/zip,application/json' });
+    const dir = el('input', { type: 'file', webkitdirectory: true, multiple: true });
+    const row = el('p', { className: 'dash-pick' });
+    const l1 = el('label', {}, 'ZIP oder JSON-Dateien: '); l1.appendChild(zip);
+    const l2 = el('label', {}, 'Entpackter Ordner: '); l2.appendChild(dir);
+    row.append(l1, l2);
+    box.append(row, el('p', {}, 'Tipp: Du kannst die ZIP-Datei auch einfach in diesen Kasten ziehen.'), status);
+    const go = (files) => handleFiles(files, box, status);
+    zip.addEventListener('change', () => go(zip.files));
+    dir.addEventListener('change', () => go(dir.files));
+    box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drag'); });
+    box.addEventListener('dragleave', () => box.classList.remove('drag'));
+    box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('drag'); go(e.dataTransfer.files); });
+  }
+
+  async function handleFiles(fileList, box, status) {
+    const files = [...fileList];
+    if (!files.length) return;
+    const say = (t) => { status.textContent = t; };
+    try {
+      // 1) bereits aufbereitete Dashboard-Dateien?
+      const ready = {};
+      for (const f of files) {
         const id = Object.keys(DATASETS).find((k) => DATASETS[k] === f.name);
-        if (!id) continue;
-        try { found[id] = rowsOf(JSON.parse(await f.text())); } catch (e) { console.error(f.name, e); }
+        if (id) ready[id] = rowsOf(JSON.parse(await f.text()));
       }
-      if (!Object.keys(found).length) { p('Keine passenden Dateien erkannt. Die Dateinamen müssen genau so lauten wie oben.'); return; }
-      apply(found);
-      box.hidden = true;
+      if (Object.keys(ready).length && Object.keys(ready).length === files.length) { apply(ready); box.hidden = true; return; }
+
+      // 2) sonst: Garmin-Export lesen und umwandeln
+      const { files: index, skipped } = await window.GarminImport.read(files, say);
+      if (!Object.keys(index).length) { say('In der Auswahl wurden keine JSON-Dateien gefunden.'); return; }
+      try {
+        const out = window.GarminImport.convert(index, say);
+        apply(out);
+        box.hidden = true;
+      } catch (e) {
+        console.error(e);
+        say(`${e.message} Die Struktur deines Exports (nur Datei- und Feldnamen, keine Werte) kannst du unten ansehen und weitergeben.`);
+        showStructure(box, index, skipped);
+      }
+    } catch (e) {
+      console.error(e);
+      say('Fehler beim Lesen: ' + (e && e.message || e));
+    }
+  }
+
+  function showStructure(box, index, skipped) {
+    const text = window.GarminImport.describe(index) + (skipped.length ? '\n\nÜbersprungen:\n' + skipped.join('\n') : '');
+    const area = el('textarea', { readOnly: true, rows: 14, className: 'dash-structure' });
+    area.value = text;
+    const copy = el('button', { type: 'button' }, 'Kopieren');
+    copy.addEventListener('click', async () => { try { await navigator.clipboard.writeText(text); copy.textContent = 'Kopiert'; } catch (e) { area.select(); } });
+    const dl = el('button', { type: 'button' }, 'Als Datei speichern');
+    dl.addEventListener('click', () => {
+      const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: 'garmin-export-struktur.txt' });
+      document.body.appendChild(a); a.click(); a.remove();
     });
-    const row = document.createElement('p'); row.appendChild(label); box.appendChild(row);
+    const row = el('p', { className: 'dash-pick' }); row.append(copy, dl);
+    box.append(area, row);
   }
 
   // erst laden, wenn die Seite (inkl. Hinweisleiste) aufgebaut ist

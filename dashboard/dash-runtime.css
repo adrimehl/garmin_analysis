@@ -73,6 +73,12 @@ body {
 #dash-banner p { margin: 0 0 8px; }
 #dash-banner p:last-child { margin-bottom: 0; }
 #dash-banner code { font-size: 12px; }
+#dash-banner.drag { border-style: dashed; border-color: var(--color-fg-muted); }
+#dash-banner .dash-pick { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; }
 #dash-banner label { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
-#dash-banner input[type=file] { max-width: 100%; }
+#dash-banner input[type=file] { max-width: 100%; font-weight: 400; }
+#dash-banner .dash-status:empty { display: none; }
+#dash-banner .dash-status { color: var(--color-fg-muted); }
+#dash-banner .dash-structure { width: 100%; box-sizing: border-box; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--color-bg); color: var(--color-fg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 8px; margin-bottom: 8px; }
+#dash-banner button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--color-border-line); background: var(--color-bg); color: var(--color-fg); cursor: pointer; }
 @media (max-width: 600px) { #dash-banner { margin: 12px 16px 0; } }
