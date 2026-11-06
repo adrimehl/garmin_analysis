@@ -15,6 +15,13 @@ Herunterladen, doppelklicken, Garmin-ZIP hineinziehen – fertig. Sie funktionie
 Dateien in diesem Ordner. Nach Änderungen an `index.html`, `*.js` oder `*.css` neu erzeugen mit
 `python build_single_file.py`.
 
+## Als claude.ai-Artefakt
+
+`python build_single_file.py --artifact <ordner>/garmin.html` erzeugt die Variante für ein privates
+Artefakt auf claude.ai (ohne Download-Knöpfe, die dort gesperrt sind). Die Demo-Daten werden dabei als
+`demo-data/*.json` mitveröffentlicht. Geladene Daten merkt sich das Dashboard im Browser (IndexedDB),
+sie überstehen also Neuladen und Updates der Seite; „Daten aus diesem Browser entfernen“ löscht sie.
+
 ## Starten (Entwicklung)
 
 ```bash

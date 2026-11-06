@@ -18,7 +18,6 @@
     ftp: 'garmin_ftp.json',
     vo2: 'garmin_vo2max.json',
   };
-  const FOLDERS = ['data', 'demo-data'];
 
   const store = {};
   Object.keys(DATASETS).forEach((id) => { store[id] = { status: 'loading', data: [] }; });
@@ -106,6 +105,30 @@
     return out;
   }
 
+  // Zuletzt geladene Daten im Browser merken (IndexedDB, nur auf diesem Gerät). Rein als Komfort:
+  // klappt das nicht (privates Fenster, gesperrter Speicher), lädt man den Export einfach erneut.
+  const cache = (() => {
+    const open = () => new Promise((res, rej) => {
+      const r = indexedDB.open('garmin-dashboard', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+    const run = async (mode, fn) => {
+      const db = await open();
+      return new Promise((res, rej) => {
+        const t = db.transaction('kv', mode); const req = fn(t.objectStore('kv'));
+        t.oncomplete = () => res(req.result); t.onerror = () => rej(t.error);
+      });
+    };
+    return {
+      get: () => run('readonly', (st) => st.get('datasets')).catch(() => null),
+      set: (v) => run('readwrite', (st) => st.put(v, 'datasets')).catch(() => null),
+      clear: () => run('readwrite', (st) => st.delete('datasets')).catch(() => null),
+    };
+  })();
+  // In der claude.ai-Ansicht sind Downloads gesperrt; die Build-Variante dafür setzt dieses Flag
+  const canDownload = window.DASH_ENV !== 'artifact';
+
   function apply(found) {
     Object.keys(DATASETS).forEach((id) => {
       store[id] = id in found
@@ -116,16 +139,22 @@
   }
 
   async function load() {
-    // Browser erlauben fetch() nicht für file://-Seiten: direkt die Dateiauswahl zeigen
-    if (location.protocol === 'file:') { banner('pick'); return; }
-    for (const folder of FOLDERS) {
-      const found = await fetchFolder(folder);
+    // Reihenfolge: eigene Dateien in ./data/ -> zuletzt geladene Daten im Browser -> Demo-Daten
+    // (Browser erlauben fetch() nicht für file://-Seiten, dort entfallen data/ und Demo)
+    const web = location.protocol !== 'file:';
+    if (web) {
+      const found = await fetchFolder('data');
       if (Object.keys(found).length) {
         apply(found);
-        if (folder !== 'data') banner('demo');
-        else if (Object.keys(found).length < Object.keys(DATASETS).length) banner('partial', found);
+        if (Object.keys(found).length < Object.keys(DATASETS).length) banner('partial', found);
         return;
       }
+    }
+    const cached = await cache.get();
+    if (cached && Array.isArray(cached.daily)) { apply(cached); banner('cached', cached); return; }
+    if (web) {
+      const demo = await fetchFolder('demo-data');
+      if (Object.keys(demo).length) { apply(demo); banner('demo'); return; }
     }
     banner('pick');
   }
@@ -143,8 +172,13 @@
     if (!box) return;
     box.hidden = false;
     box.replaceChildren();
+    box.classList.remove('ok');
     const p = (text) => box.appendChild(el('p', {}, text));
-    if (kind === 'demo') {
+    if (kind === 'cached') {
+      box.classList.add('ok');
+      const when = found.savedAt ? new Date(found.savedAt).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+      p(`Angezeigt werden deine zuletzt geladenen Garmin-Daten${when ? ` (geladen am ${when})` : ''}. Sie sind nur in diesem Browser gespeichert. Für neuere Daten einfach einen neuen Export laden:`);
+    } else if (kind === 'demo') {
       p('Angezeigt werden synthetische Demo-Daten. Lade deinen Garmin-Export, um deine eigenen Daten zu sehen. Er wird nur hier im Browser ausgewertet und nirgends hochgeladen.');
     } else if (kind === 'partial') {
       const missing = Object.keys(DATASETS).filter((id) => !(id in found)).map((id) => DATASETS[id]);
@@ -167,6 +201,21 @@
     box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drag'); });
     box.addEventListener('dragleave', () => box.classList.remove('drag'));
     box.addEventListener('drop', (e) => { e.preventDefault(); box.classList.remove('drag'); go(e.dataTransfer.files); });
+    if (kind === 'cached') box.appendChild(forgetRow(box));
+  }
+
+  function forgetRow(box) {
+    const row = el('p', { className: 'dash-pick' });
+    const forget = el('button', { type: 'button' }, 'Daten aus diesem Browser entfernen');
+    forget.addEventListener('click', async () => { await cache.clear(); box.classList.remove('ok'); load(); });
+    row.appendChild(forget);
+    return row;
+  }
+
+  async function remember(out, report) {
+    const copy = { savedAt: new Date().toISOString(), report };
+    Object.keys(DATASETS).forEach((id) => { if (out[id]) copy[id] = out[id]; });
+    await cache.set(copy);
   }
 
   async function handleFiles(fileList, box, status) {
@@ -180,7 +229,11 @@
         const id = Object.keys(DATASETS).find((k) => DATASETS[k] === f.name);
         if (id) ready[id] = rowsOf(JSON.parse(await f.text()));
       }
-      if (Object.keys(ready).length && Object.keys(ready).length === files.length) { apply(ready); box.hidden = true; return; }
+      if (Object.keys(ready).length && Object.keys(ready).length === files.length) {
+        const report = [`${Object.keys(ready).length} aufbereitete Dateien`];
+        apply(ready); await remember(ready, report); showResult(box, { ...ready, report });
+        return;
+      }
 
       // 2) sonst: Garmin-Export lesen und umwandeln
       const { files: index, skipped } = await window.GarminImport.read(files, say);
@@ -188,6 +241,7 @@
       try {
         const out = window.GarminImport.convert(index, say);
         apply(out);
+        await remember(out, out.report);
         showResult(box, out);
       } catch (e) {
         console.error(e);
@@ -204,7 +258,7 @@
   function showResult(box, out) {
     box.replaceChildren();
     box.classList.add('ok');
-    box.appendChild(el('p', {}, 'Dein Garmin-Export ist geladen (nur in diesem Browser): ' + out.report.join(' · ') + '.'));
+    box.appendChild(el('p', {}, 'Geladen: ' + out.report.join(' · ') + '. Die Daten bleiben in diesem Browser gespeichert und sind beim nächsten Öffnen wieder da; hochgeladen wird nichts.'));
     const row = el('p', { className: 'dash-pick' });
     const save = el('button', { type: 'button' }, 'Aufbereitete Dateien speichern');
     save.title = 'Die fünf JSON-Dateien für dashboard/data/, damit beim nächsten Mal keine Umwandlung nötig ist';
@@ -216,7 +270,8 @@
     });
     const close = el('button', { type: 'button' }, 'Ausblenden');
     close.addEventListener('click', () => { box.hidden = true; });
-    row.append(save, close);
+    if (canDownload) row.append(save);
+    row.append(forgetRow(box).firstChild, close);
     box.appendChild(row);
   }
 
@@ -231,7 +286,7 @@
       const a = el('a', { href: URL.createObjectURL(new Blob([text], { type: 'text/plain' })), download: 'garmin-export-struktur.txt' });
       document.body.appendChild(a); a.click(); a.remove();
     });
-    const row = el('p', { className: 'dash-pick' }); row.append(copy, dl);
+    const row = el('p', { className: 'dash-pick' }); row.append(copy); if (canDownload) row.append(dl);
     box.append(area, row);
   }
 
