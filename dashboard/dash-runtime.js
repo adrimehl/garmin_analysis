@@ -188,7 +188,7 @@
       try {
         const out = window.GarminImport.convert(index, say);
         apply(out);
-        box.hidden = true;
+        showResult(box, out);
       } catch (e) {
         console.error(e);
         say(`${e.message} Die Struktur deines Exports (nur Datei- und Feldnamen, keine Werte) kannst du unten ansehen und weitergeben.`);
@@ -198,6 +198,26 @@
       console.error(e);
       say('Fehler beim Lesen: ' + (e && e.message || e));
     }
+  }
+
+  // Nach erfolgreichem Import: was wurde gefunden, und die aufbereiteten Dateien zum Speichern
+  function showResult(box, out) {
+    box.replaceChildren();
+    box.classList.add('ok');
+    box.appendChild(el('p', {}, 'Dein Garmin-Export ist geladen (nur in diesem Browser): ' + out.report.join(' · ') + '.'));
+    const row = el('p', { className: 'dash-pick' });
+    const save = el('button', { type: 'button' }, 'Aufbereitete Dateien speichern');
+    save.title = 'Die fünf JSON-Dateien für dashboard/data/, damit beim nächsten Mal keine Umwandlung nötig ist';
+    save.addEventListener('click', () => {
+      Object.entries(DATASETS).forEach(([id, file], i) => setTimeout(() => {
+        const a = el('a', { href: URL.createObjectURL(new Blob([JSON.stringify(out[id])], { type: 'application/json' })), download: file });
+        document.body.appendChild(a); a.click(); a.remove();
+      }, i * 300));
+    });
+    const close = el('button', { type: 'button' }, 'Ausblenden');
+    close.addEventListener('click', () => { box.hidden = true; });
+    row.append(save, close);
+    box.appendChild(row);
   }
 
   function showStructure(box, index, skipped) {

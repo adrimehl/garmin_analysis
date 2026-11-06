@@ -16,9 +16,32 @@ python -m http.server 8000
 # dann http://localhost:8000 öffnen
 ```
 
-Ohne eigene Daten zeigt das Dashboard **synthetische Demo-Daten** aus `demo-data/`.
-Alternativ `index.html` direkt per Doppelklick öffnen und die JSON-Dateien über den Dateidialog auswählen
-(Browser erlauben einer lokal geöffneten Seite nicht, Dateien selbst nachzuladen).
+Oder `index.html` einfach per Doppelklick öffnen. Ohne eigene Daten zeigt das Dashboard **synthetische Demo-Daten**.
+
+## Garmin-Export direkt laden
+
+1. Auf garmin.com unter Konto → Datenverwaltung → „Daten exportieren“ den Export anfordern (kommt per E-Mail).
+2. Im Dashboard die ZIP-Datei auswählen oder in den Hinweiskasten ziehen (der entpackte Ordner geht auch).
+3. Das Dashboard liest und rechnet **nur in deinem Browser**, es wird nichts hochgeladen.
+4. Optional „Aufbereitete Dateien speichern“ und die fünf Dateien nach `dashboard/data/` legen. Dann sind sie beim nächsten Start sofort da.
+
+Verwendet werden aus `DI_CONNECT`:
+
+| Datei im Export | ergibt |
+|---|---|
+| `…_summarizedActivities.json` | Aktivitäten (Doppelaufzeichnungen anderer Geräte, z.B. Velocomputer, werden entfernt) |
+| `UDSFile_…json` | Tageswerte: Schritte, Ruhepuls, Stress, Body Battery, Intensitätsminuten, Tragezeit |
+| `…_sleepData.json` | Schlaf (Zeiten über den Zeitzonen-Versatz in Ortszeit umgerechnet) |
+| `…_healthStatusData.json` | HRV |
+| `MetricsMaxMetData_…json` | VO₂max |
+| Dateien mit `TrainingReadiness`, `FitnessAge` bzw. `biometric` im Namen | Readiness, Fitnessalter, FTP (Format noch nicht an echten Daten geprüft) |
+
+Einheiten im Export: Dauer in ms, Distanz und Höhenmeter in cm, `avgSpeed` × 36 = km/h, Kalorien in kJ.
+„Body Battery morgens“ ist der Tageshöchstwert (meist direkt nach dem Schlaf).
+Training Load und Training Effect fehlen in neueren Exporten; die Spalten bleiben dann leer.
+
+Klappt die Umwandlung nicht, zeigt das Dashboard die **Struktur** des Exports (nur Datei- und Feldnamen,
+keine Werte). Diesen Text kannst du weitergeben, um das Problem zu beheben.
 
 ## Eigene Daten
 
@@ -80,5 +103,7 @@ python make_demo_data.py
 | `calcs.js` | alle Berechnungen (Mittelwerte, Korrelationen, Erholungskurven …) |
 | `app.js` | Darstellung der fünf Bereiche |
 | `kit.js` | kleine Diagramm-Bibliothek auf Basis von d3 |
+| `garmin-import.js` | Garmin-Export lesen (ZIP/Ordner) und ins Dashboard-Format umwandeln |
 | `dash-runtime.js/.css` | Ersatz für die claude.ai-Laufzeit: Daten laden, Berechnungen ausführen, Design-Tokens |
 | `vendor/d3.min.js` | d3 v7.9.0 (ISC-Lizenz, siehe `vendor/d3.LICENSE`) |
+| `vendor/fflate.min.js` | fflate 0.8.2 zum Entpacken (MIT-Lizenz, siehe `vendor/fflate.LICENSE`) |

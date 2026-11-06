@@ -33,6 +33,8 @@ cd dashboard
 python -m http.server 8000   # dann http://localhost:8000 öffnen
 ```
 
+Oder `dashboard/index.html` per Doppelklick öffnen und die **ZIP-Datei des Garmin-Exports** hineinziehen –
+die Auswertung läuft komplett im Browser, ohne Python und ohne Upload.
 Details und Datenformat: [`dashboard/README.md`](dashboard/README.md).
 
 ## Datenschutz

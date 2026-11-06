@@ -73,6 +73,7 @@ body {
 #dash-banner p { margin: 0 0 8px; }
 #dash-banner p:last-child { margin-bottom: 0; }
 #dash-banner code { font-size: 12px; }
+#dash-banner.ok { border-left-color: var(--color-ok); }
 #dash-banner.drag { border-style: dashed; border-color: var(--color-fg-muted); }
 #dash-banner .dash-pick { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: center; }
 #dash-banner label { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; cursor: pointer; font-weight: 600; overflow-wrap: anywhere; }
