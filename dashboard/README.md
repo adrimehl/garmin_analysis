@@ -8,7 +8,14 @@ Ursprünglich als Artefakt auf claude.ai entstanden („Garmin Langzeitanalyse�
 die claude.ai bereitstellt (`dash.data`, `dash.calc`, Farben, Design-Tokens), ist in
 `dash-runtime.js` und `dash-runtime.css` nachgebaut, damit das Dashboard eigenständig im Browser läuft.
 
-## Starten
+## Am einfachsten: eine einzige Datei
+
+**`garmin-dashboard.html`** enthält das ganze Dashboard (Gestaltung, Programm, Bibliotheken) in einer Datei.
+Herunterladen, doppelklicken, Garmin-ZIP hineinziehen – fertig. Sie funktioniert auch allein, ohne die anderen
+Dateien in diesem Ordner. Nach Änderungen an `index.html`, `*.js` oder `*.css` neu erzeugen mit
+`python build_single_file.py`.
+
+## Starten (Entwicklung)
 
 ```bash
 cd dashboard
@@ -99,6 +106,7 @@ python make_demo_data.py
 
 | Datei | Zweck |
 |---|---|
+| `garmin-dashboard.html` | alles in einer Datei (erzeugt von `build_single_file.py`) |
 | `index.html` | Seite und Layout |
 | `calcs.js` | alle Berechnungen (Mittelwerte, Korrelationen, Erholungskurven …) |
 | `app.js` | Darstellung der fünf Bereiche |

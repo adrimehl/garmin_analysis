@@ -28,13 +28,11 @@ Die Grafiken landen in `plots/`.
 
 ## Dashboard
 
-```bash
-cd dashboard
-python -m http.server 8000   # dann http://localhost:8000 öffnen
-```
+1. [`dashboard/garmin-dashboard.html`](dashboard/garmin-dashboard.html) herunterladen (auf GitHub: Knopf „Download raw file“).
+2. Die Datei per Doppelklick im Browser öffnen.
+3. Die ZIP-Datei des Garmin-Exports (garmin.com → Konto → Datenverwaltung → Daten exportieren) in den Kasten oben ziehen.
 
-Oder `dashboard/index.html` per Doppelklick öffnen und die **ZIP-Datei des Garmin-Exports** hineinziehen –
-die Auswertung läuft komplett im Browser, ohne Python und ohne Upload.
+Die Auswertung läuft komplett im Browser, ohne Python und ohne Upload.
 Details und Datenformat: [`dashboard/README.md`](dashboard/README.md).
 
 ## Datenschutz
