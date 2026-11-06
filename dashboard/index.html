@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Garmin Langzeitanalyse</title>
+<link rel="stylesheet" href="dash-runtime.css">
+<script src="vendor/d3.min.js"></script>
+<script src="dash-runtime.js"></script>
+</head>
+<body>
+<div id="dash-banner" hidden></div>
+<div id="dash-root">
+<style>
+  .gx { display: flex; flex-direction: column; gap: var(--cds-gap-lg); font-family: var(--font-anthropic-sans); max-width: 1280px; margin-inline: auto; }
+  .gx-head { display: flex; flex-direction: column; gap: var(--cds-gap-xs); }
+  .gx-title { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+  .gx-take { color: var(--color-fg-muted); font-size: var(--cds-font-size-body); margin: 0; max-width: 75ch; line-height: 1.5; }
+  .gx-take b, .gx-note b, .gx-find b { font-weight: 600; color: var(--color-fg); font-variant-numeric: tabular-nums; }
+  .gx-tabs { display: flex; gap: var(--cds-gap-xs); flex-wrap: wrap; border-bottom: 1px solid var(--color-border-line); }
+  .gx-tab { appearance: none; background: none; border: 0; border-bottom: 2px solid transparent; padding: var(--cds-pad-sm) var(--cds-pad-md); font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg-muted); cursor: pointer; margin-bottom: -1px; }
+  .gx-tab:hover { color: var(--color-fg); }
+  .gx-tab[aria-selected="true"] { color: var(--color-fg); border-bottom-color: var(--color-fg); font-weight: var(--cds-font-weight-medium); }
+  .gx-tab:focus-visible, .gx-chip:focus-visible, .gx-sel:focus-visible, .gx-th:focus-visible { outline: 2px solid var(--color-fg); outline-offset: 2px; }
+  .gx-page { display: flex; flex-direction: column; gap: var(--cds-gap-lg); }
+  .gx-sec { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: var(--cds-gap-sm) 0 0; }
+  .gx-sec-note { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0; max-width: 80ch; line-height: 1.5; }
+  .gx-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10.5rem), 1fr)); gap: var(--cds-gap-md); }
+  .gx-kpi { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md) var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-xs); min-width: 0; }
+  .gx-kpi-l { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .gx-kpi-v { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; line-height: 1.1; }
+  .gx-kpi-u { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin-left: 2px; font-family: var(--font-anthropic-sans); }
+  .gx-kpi-d { font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; color: var(--color-fg-muted); }
+  .gx-good { color: var(--color-ok); } .gx-bad { color: var(--color-bad); }
+  .gx-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: var(--cds-gap-md); }
+  .gx-grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr)); gap: var(--cds-gap-md); }
+  .gx-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); display: flex; flex-direction: column; gap: var(--cds-gap-sm); min-width: 0; }
+  .gx-card h3 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .gx-note { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); margin: 0; line-height: 1.5; }
+  .gx-chart { min-height: 190px; width: 100%; }
+  .gx-chart.tall { min-height: 260px; }
+  .gx-chart.short { min-height: 150px; }
+  .gx-chip i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 0; }
+  .gx-chips { display: flex; flex-wrap: wrap; gap: var(--cds-gap-xs); }
+  .gx-chip { appearance: none; font: inherit; font-size: var(--cds-font-size-caption); padding: 4px 10px; border-radius: 999px; border: 1px solid var(--color-border-line); background: var(--color-bg); color: var(--color-fg-muted); cursor: pointer; }
+  .gx-chip[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); border-color: var(--color-fg); }
+  .gx-row { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm); align-items: center; }
+  .gx-sel { font: inherit; font-size: var(--cds-font-size-caption); padding: 4px 8px; border-radius: var(--cds-radius); border: 1px solid var(--color-border-line); background: var(--color-bg); color: var(--color-fg); max-width: 100%; }
+  .gx-lab { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .gx-legend { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm) var(--cds-gap-md); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .gx-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .gx-finds { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: var(--cds-gap-md); }
+  .gx-find { border-left: 3px solid var(--color-border-line); padding: 2px 0 2px var(--cds-pad-md); display: flex; flex-direction: column; gap: 2px; font-size: var(--cds-font-size-body); line-height: 1.45; }
+  .gx-find small { color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+  .gx-find.pos { border-left-color: var(--color-ok); } .gx-find.neg { border-left-color: var(--color-bad); }
+  .gx-tablebox { max-height: 460px; overflow: auto; border-top: 1px solid var(--color-border-line); }
+  .gx-table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-caption); font-variant-numeric: tabular-nums; }
+  .gx-table th { position: sticky; top: 0; background: var(--color-panel); text-align: right; font-weight: var(--cds-font-weight-medium); color: var(--color-fg-muted); padding: 0; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .gx-table th:first-child, .gx-table th.l, .gx-table td.l { text-align: left; }
+  .gx-th { appearance: none; background: none; border: 0; font: inherit; color: inherit; padding: 6px 8px; cursor: pointer; width: 100%; text-align: inherit; }
+  .gx-table td { padding: 5px 8px; text-align: right; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .gx-table td.name { max-width: 16rem; overflow: hidden; text-overflow: ellipsis; }
+  .gx-search { font: inherit; font-size: var(--cds-font-size-caption); padding: 5px 8px; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); background: var(--color-bg); color: var(--color-fg); width: min(100%, 16rem); }
+  .gx-small { overflow-x: auto; }
+  .gx-scatter-r { font-family: var(--font-anthropic-serif); font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; }
+  .gk-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); z-index: 5; min-width: 9rem; transition: opacity .1s; }
+  .gk-tip-h { color: var(--cds-text-secondary); margin-bottom: 2px; }
+  .gk-tip-r { display: flex; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; }
+  .gk-tip-r i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+  .gk-tip-r span { flex: 1; } .gk-tip-r b { font-weight: 600; }
+  [data-dash-source-state=empty] { color: transparent; }
+  [data-dash-source-state=refreshing] { opacity: .5; transition: opacity var(--cds-dur-slow); }
+  .gx-fail { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: inherit; }
+  .gx-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+</style>
+
+<div class="gx">
+  <header class="gx-head">
+    <h1 class="gx-title">Garmin Langzeitanalyse</h1>
+    <p class="gx-take" id="takeaway"><span class="dash-skeleton">—</span></p>
+  </header>
+
+  <nav class="gx-tabs" role="tablist" aria-label="Bereiche">
+    <button class="gx-tab" role="tab" id="tab-ueberblick" data-page="ueberblick" aria-selected="true">Überblick</button>
+    <button class="gx-tab" role="tab" id="tab-schlaf" data-page="schlaf" aria-selected="false">Schlaf &amp; Erholung</button>
+    <button class="gx-tab" role="tab" id="tab-training" data-page="training" aria-selected="false">Training &amp; Fitness</button>
+    <button class="gx-tab" role="tab" id="tab-alltag" data-page="alltag" aria-selected="false">Alltag &amp; Stress</button>
+    <button class="gx-tab" role="tab" id="tab-zusammenhaenge" data-page="zusammenhaenge" aria-selected="false">Zusammenhänge</button>
+  </nav>
+
+  <!-- ÜBERBLICK -->
+  <section class="gx-page" id="ueberblick" role="tabpanel">
+    <div class="gx-kpis" id="kpis"></div>
+    <p class="gx-sec-note" id="kpi-window">Mittelwerte der letzten 90 Tage, verglichen mit denselben 90 Tagen im Vorjahr. Grün heisst: Veränderung in die günstige Richtung.</p>
+
+    <h2 class="gx-sec" id="sec-trends">Vier Jahre im Verlauf</h2>
+    <p class="gx-sec-note">Jede Linie ist ein gleitendes 28-Tage-Mittel; die Punkte dahinter sind Einzeltage. Fahre über ein Diagramm für die Werte an einem Datum.</p>
+    <div class="gx-grid3">
+      <div class="gx-card" id="card-tr-rhr"><h3>Ruhepuls</h3><p class="gx-note">Schläge pro Minute. Tiefer ist in der Regel fitter oder erholter.</p><div class="gx-chart short" id="tr-rhr" data-source="rolling daily"></div></div>
+      <div class="gx-card" id="card-tr-sleep"><h3>Schlafscore</h3><p class="gx-note">Garmin-Score 0–100 pro Nacht.</p><div class="gx-chart short" id="tr-sleep" data-source="rolling daily"></div></div>
+      <div class="gx-card" id="card-tr-stress"><h3>Stress im Wachzustand</h3><p class="gx-note">Garmin-Stresswert 0–100 aus der Herzfrequenzvariabilität.</p><div class="gx-chart short" id="tr-stress" data-source="rolling daily"></div></div>
+      <div class="gx-card" id="card-tr-steps"><h3>Schritte pro Tag</h3><p class="gx-note">Nur Tage mit Schritten gezählt.</p><div class="gx-chart short" id="tr-steps" data-source="rolling daily"></div></div>
+      <div class="gx-card" id="card-tr-sleeph"><h3>Schlafdauer</h3><p class="gx-note">Stunden Schlaf (ohne Wachphasen).</p><div class="gx-chart short" id="tr-sleeph" data-source="rolling daily"></div></div>
+      <div class="gx-card" id="card-tr-train"><h3>Trainingsminuten pro Tag</h3><p class="gx-note">Aufgezeichnete Sportaktivitäten ohne Spaziergänge, Ruhetage als 0.</p><div class="gx-chart short" id="tr-train" data-source="rolling"></div></div>
+    </div>
+
+    <h2 class="gx-sec" id="sec-finds">Auffälligste Zusammenhänge</h2>
+    <p class="gx-sec-note">Die stärksten Rangkorrelationen zwischen einem Tag und dem Folgetag, ohne Kennzahlen, die sich gegenseitig definieren. Korrelation zeigt ein gemeinsames Muster, keine bewiesene Ursache.</p>
+    <div class="gx-finds" id="finds"></div>
+  </section>
+
+  <!-- SCHLAF -->
+  <section class="gx-page" id="schlaf" role="tabpanel" hidden>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-sleep-comp"><h3>Schlafphasen pro Monat</h3><p class="gx-note">Durchschnittliche Stunden pro Nacht, gestapelt nach Phase.</p>
+        <div class="gx-legend" id="lg-sleep"></div>
+        <div class="gx-chart" id="sleep-comp" data-source="monthly"></div></div>
+      <div class="gx-card" id="card-sleep-clock"><h3>Einschlaf- und Aufwachzeit</h3><p class="gx-note">Gleitendes 28-Tage-Mittel der Uhrzeit.</p><div class="gx-chart short" id="sleep-bed" data-source="rolling"></div><div class="gx-chart short" id="sleep-wake" data-source="rolling"></div></div>
+    </div>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-sleep-week"><h3>Schlaf nach Wochentag</h3><p class="gx-note">Schlafscore der Nacht <i>vor</i> dem genannten Tag (Mo = Nacht So→Mo).</p>
+        <div class="gx-chips" id="chips-week"></div>
+        <div class="gx-chart" id="sleep-week" data-source="weekday"></div></div>
+      <div class="gx-card" id="card-hrv"><h3>HRV und Training Readiness (seit 2026)</h3><p class="gx-note">Nächtliche HRV in ms und Garmins Bereitschaftswert 0–100; erst die neue Uhr misst beides.</p>
+        <div class="gx-chips" id="chips-hrv"></div>
+        <div class="gx-chart" id="hrv" data-source="daily rolling"></div></div>
+    </div>
+    <div class="gx-card" id="card-bb"><h3>Body Battery beim Aufwachen</h3><p class="gx-note">Wie voll der Akku nach der Nacht ist (0–100). Erst seit Mitte 2024 aufgezeichnet.</p><div class="gx-chart short" id="bb" data-source="rolling daily"></div></div>
+  </section>
+
+  <!-- TRAINING -->
+  <section class="gx-page" id="training" role="tabpanel" hidden>
+    <div class="gx-card" id="card-hours"><h3>Trainingsstunden pro Monat</h3><p class="gx-note">Alle aufgezeichneten Aktivitäten ausser Spaziergängen, nach Sportart. Fahrten vom Edge Explore 2 und andere Doppelaufzeichnungen von Velocomputern sind entfernt; gezählt wird die Aufzeichnung der Uhr.</p>
+      <div class="gx-legend" id="lg-hours"></div>
+      <div class="gx-chart tall" id="hours" data-source="monthly"></div></div>
+    <div class="gx-card" id="card-sportmonth"><h3>Trainingsstunden nach Kalendermonat</h3><p class="gx-note">Gesamtdauer pro Sportart in einem Monat, gemittelt über die Jahre (gleiche Monate zusammengefasst). Angebrochene Monate (Okt 2022, Okt 2026) und Lücken ohne Uhrdaten (v.a. Juli 2024) zählen nur anteilig. Ohne Gehen; Velo inkl. indoor. Tippe eine Sportart an, um sie ein- oder auszublenden.</p>
+      <div class="gx-chips" id="chips-sportmonth"></div>
+      <div class="gx-small"><div class="gx-chart tall" id="sportmonth" data-source="sport_month"></div></div></div>
+    <div class="gx-card" id="card-ytd"><h3>Trainingsstunden pro Jahr, gleicher Zeitraum</h3><p class="gx-note">Jedes Jahr vom 1. Januar bis <span id="ytd-until" data-source="sport_ytd" data-field="until_label" data-row="0">—</span>, damit das laufende Jahr fair vergleichbar ist. Ohne Gehen; Velo inkl. indoor. 2022 fehlt, weil die Daten erst im Oktober 2022 beginnen.</p>
+      <div class="gx-legend" id="lg-ytd"></div>
+      <div class="gx-chart tall" id="ytd" data-source="sport_ytd"></div></div>
+    <div class="gx-card" id="card-prof"><h3>Profil pro Sportart und Jahr</h3><p class="gx-note">Zeigt, ob sich die Zeit ändert, weil du öfter, länger oder weiter trainierst. 2026 läuft erst bis Mitte Oktober, die Anzahl Einheiten ist dort also noch nicht vollständig. 2022 (nur Okt–Dez) ist weggelassen.</p>
+      <div class="gx-chips" id="chips-prof"></div>
+      <div class="gx-grid3">
+        <div><span class="gx-lab">Einheiten pro Jahr</span><div class="gx-chart short" id="pr-n" data-source="sport_profile"></div></div>
+        <div><span class="gx-lab">Ø Dauer pro Einheit (min)</span><div class="gx-chart short" id="pr-dur" data-source="sport_profile"></div></div>
+        <div><span class="gx-lab">Ø Distanz pro Einheit (km)</span><div class="gx-chart short" id="pr-km" data-source="sport_profile"></div></div>
+      </div></div>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-vo2"><h3>VO₂max</h3><p class="gx-note">Garmins Schätzung aus Läufen und schnellen Gehstrecken (ml/kg/min). Velo-VO₂max fehlt in den Daten.</p><div class="gx-chart" id="vo2" data-source="vo2"></div></div>
+      <div class="gx-card" id="card-fitage"><h3>Fitnessalter</h3><p class="gx-note">Garmins Fitnessalter (aus VO₂max, Ruhepuls und Aktivität) gegenüber dem tatsächlichen Alter.</p><div class="gx-chart" id="fitage" data-source="fitage"></div></div>
+    </div>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-rhr-vol"><h3>Trainingsumfang und Ruhepuls</h3><p class="gx-note">Monatliche Trainingsstunden (Balken, linke Skala) und der mittlere Ruhepuls des Monats (Linie).</p>
+        <div class="gx-chart" id="vol-h" data-source="monthly"></div>
+        <div class="gx-chart short" id="vol-rhr" data-source="monthly"></div></div>
+      <div class="gx-card" id="card-drivers"><h3>Was hängt über Monate zusammen?</h3>
+        <p class="gx-note">Rangkorrelation zwischen den Trainingsstunden eines Monats und dem Wert im selben bzw. in den folgenden Monaten (Monate mit mind. 15 Tagen Daten).</p>
+        <div class="gx-small"><table class="gx-table" id="drivers"></table></div>
+        <p class="gx-note" id="drivers-note"></p>
+        <h3 style="margin-top: var(--cds-gap-sm)">FTP Velo</h3><p class="gx-note">Funktionelle Schwellenleistung in Watt, seit es einen Powermeter gibt.</p>
+        <div class="gx-chart short" id="ftp" data-source="ftp"></div></div>
+    </div>
+    <div class="gx-card" id="card-sportyear"><h3>Sportarten pro Jahr</h3><p class="gx-note">Stunden, Einheiten und Kilometer je Kategorie. 2022 enthält nur Oktober bis Dezember, 2026 bis Mitte Oktober.</p>
+      <div class="gx-small"><table class="gx-table" id="sportyear" data-source="sport_year" data-row-key="year,cat"></table></div></div>
+    <div class="gx-card" id="card-acts"><h3>Alle Aktivitäten</h3><p class="gx-note">Nur Aufzeichnungen der Uhren. 75 Aufzeichnungen von Velocomputern und Apps (42 davon vom Edge Explore 2) sind ausgeschlossen, weil dieselbe Fahrt fast immer auch auf der Uhr lief.</p>
+      <div class="gx-row"><input class="gx-search" id="act-search" type="search" placeholder="Suchen, z.B. Laufen oder Zürich" aria-label="Aktivitäten durchsuchen"><span class="gx-lab" id="act-count"></span></div>
+      <div class="gx-tablebox"><table class="gx-table" id="acts" data-source="activities" data-row-key="activity_id"></table></div></div>
+  </section>
+
+  <!-- ALLTAG -->
+  <section class="gx-page" id="alltag" role="tabpanel" hidden>
+    <div class="gx-card" id="card-steps-m"><h3>Schritte pro Monat</h3><p class="gx-note">Mittlere Schritte pro Tag im Monat.</p><div class="gx-chart" id="steps-m" data-source="monthly"></div></div>
+    <h2 class="gx-sec" id="sec-week">Wochenrhythmus</h2>
+    <div class="gx-grid3">
+      <div class="gx-card" id="card-wk-steps"><h3>Schritte</h3><div class="gx-chart short" id="wk-steps" data-source="weekday"></div></div>
+      <div class="gx-card" id="card-wk-train"><h3>Trainingsminuten</h3><div class="gx-chart short" id="wk-train" data-source="weekday"></div></div>
+      <div class="gx-card" id="card-wk-stress"><h3>Stress wach</h3><div class="gx-chart short" id="wk-stress" data-source="weekday"></div></div>
+    </div>
+    <h2 class="gx-sec" id="sec-season">Jahreszeiten</h2>
+    <p class="gx-sec-note">Mittel pro Kalendermonat über alle Jahre.</p>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-se-a"><div class="gx-chips" id="chips-season-a"></div><div class="gx-chart short" id="se-a" data-source="season"></div></div>
+      <div class="gx-card" id="card-se-b"><div class="gx-chips" id="chips-season-b"></div><div class="gx-chart short" id="se-b" data-source="season"></div></div>
+    </div>
+    <div class="gx-card" id="card-stress-m"><h3>Stress im Wachzustand pro Monat</h3><p class="gx-note">Monatsmittel des Garmin-Stresswerts im Wachzustand.</p><div class="gx-chart short" id="stress-m" data-source="monthly"></div></div>
+  </section>
+
+  <!-- ZUSAMMENHÄNGE -->
+  <section class="gx-page" id="zusammenhaenge" role="tabpanel" hidden>
+    <h2 class="gx-sec" id="sec-ts">Training → Schlaf und Erholung</h2>
+    <p class="gx-sec-note" id="ts-take"></p>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-after"><h3>Die Nacht nach dem Training</h3>
+        <p class="gx-note">Tage gruppiert nach intensiven Minuten (Garmin «vigorous»). Balken: Mittel der folgenden Nacht bzw. des nächsten Morgens, Strich: ±1 Standardfehler.</p>
+        <div class="gx-chips" id="chips-after"></div>
+        <div class="gx-chart" id="after" data-source="after_training"></div></div>
+      <div class="gx-card" id="card-curve"><h3>Erholungskurve nach harten Tagen</h3>
+        <p class="gx-note">Nach Tagen mit über 60 intensiven Minuten: Abweichung vom eigenen 28-Tage-Mittel. Tag 0 = Trainingstag, Tag 1 = folgende Nacht und nächster Tag.</p>
+        <div class="gx-chips" id="chips-curve"></div>
+        <div class="gx-chart" id="curve" data-source="recovery_curve"></div></div>
+    </div>
+    <div class="gx-card" id="card-evening"><h3>Spät trainieren: schlechter schlafen?</h3>
+      <p class="gx-note">Trainingstage nach Ende der letzten Einheit. Werte der folgenden Nacht.</p>
+      <div class="gx-small"><table class="gx-table" id="evening" data-source="evening" data-row-key="group"></table></div>
+      <p class="gx-note" id="evening-note"></p></div>
+
+    <h2 class="gx-sec" id="sec-sport">Sportart und auffällige Tage</h2>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-sportrec"><h3>Erholung nach Sportart</h3>
+        <p class="gx-note">Tage, an denen eine Sportart klar dominiert (mind. 20 min und 70 % der Trainingszeit), und Ruhetage. Balken: Abweichung der folgenden Nacht bzw. des nächsten Morgens vom eigenen 28-Tage-Mittel; Strich: ±1 Standardfehler. Die Sportarten unterscheiden sich stark in der Dauer, das steckt mit drin.</p>
+        <div class="gx-chips" id="chips-sportrec"></div>
+        <p class="gx-note" id="sportrec-dir"></p>
+        <div class="gx-chart" id="sportrec" data-source="sport_recovery"></div>
+        <p class="gx-note" id="sportrec-dur"></p></div>
+      <div class="gx-card" id="card-before"><h3>Was vor auffälligen Tagen passiert</h3>
+        <p class="gx-note">Auffällig heisst: deutlich schlechter als das eigene 28-Tage-Mittel. Balken: wie ungewöhnlich die drei Tage davor waren, in Standardabweichungen (0 = wie sonst, ±0.5 = merklich). Schlafwerte zählen die drei Nächte davor inkl. der Nacht direkt vor dem Morgen.</p>
+        <div class="gx-chips" id="chips-before"></div>
+        <p class="gx-note" id="before-n"></p>
+        <div class="gx-chart" id="before" data-source="before_events"></div>
+        <div class="gx-small"><table class="gx-table" id="before-t" data-source="before_events" data-row-key="event,predictor"></table></div></div>
+    </div>
+    <h2 class="gx-sec" id="sec-eff">Effizienz und Rhythmus</h2>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-eff"><h3>Meter pro Herzschlag</h3>
+        <p class="gx-note">Durchschnittstempo geteilt durch Durchschnittspuls: Steigt der Wert, legst du mit gleichem Puls mehr Strecke zurück. Punkte: einzelne Einheiten; Linie: gleitender Median ±60 Tage. Velo nur flache Fahrten draussen (mind. 15 km, höchstens 8 Hm/km), weil Leistungsdaten (Watt) fehlen. Tempo hängt auch von Strecke, Wind und Intensität ab.</p>
+        <div class="gx-chips" id="chips-eff"></div>
+        <div class="gx-chart" id="eff" data-source="efficiency"></div></div>
+      <div class="gx-card" id="card-sleepreg"><h3>Regelmässige Einschlafzeit</h3>
+        <p class="gx-note">Kalenderwochen nach der Streuung der Einschlafzeit (Standardabweichung über die Nächte der Woche). Balken: Wochenmittel; Strich: ±1 Standardfehler; n = Anzahl Wochen.</p>
+        <div class="gx-chips" id="chips-sleepreg"></div>
+        <div class="gx-chart" id="sleepreg" data-source="sleep_reg"></div>
+        <p class="gx-note" id="sleepreg-r"></p></div>
+    </div>
+
+    <h2 class="gx-sec" id="sec-matrix">Freie Korrelations-Matrix</h2>
+    <p class="gx-sec-note">Spearman-Rangkorrelation: +1 heisst, beide steigen gemeinsam; −1, das eine steigt, wenn das andere fällt; um 0 kein Muster. Ab etwa ±0.2 lohnt sich ein Blick, ab ±0.4 ist der Zusammenhang deutlich. Klicke ein Feld an, um das Streudiagramm zu sehen.</p>
+    <div class="gx-grid">
+      <div class="gx-card" id="card-heat"><div class="gx-row"><span class="gx-lab">Vergleich</span><div class="gx-chips" id="chips-lag"></div></div>
+        <p class="gx-note" id="lag-note"></p>
+        <div class="gx-legend" id="lg-heat"></div>
+        <div class="gx-chart tall" id="heat" data-source="corr"></div></div>
+      <div class="gx-card" id="card-scatter">
+        <div class="gx-row"><label class="gx-lab" for="sel-x">X</label><select class="gx-sel" id="sel-x"></select><label class="gx-lab" for="sel-y">Y</label><select class="gx-sel" id="sel-y"></select></div>
+        <div class="gx-row" style="align-items: baseline"><span class="gx-scatter-r" id="sc-r" data-source="corr">—</span><span class="gx-note" id="sc-desc"></span></div>
+        <div class="gx-chart tall" id="scatter" data-source="daily"></div>
+        <p class="gx-note">Punkte: Einzeltage. Linie: Mittel von Y in fünf gleich grossen Gruppen nach X.</p></div>
+    </div>
+  </section>
+</div>
+<script src="kit.js"></script>
+<script src="calcs.js"></script>
+<script src="app.js"></script>
+</div>
+</body>
+</html>

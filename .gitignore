@@ -1,7 +1,8 @@
 # Persönliche Garmin-Daten und erzeugte Grafiken nicht ins (öffentliche) Repo
-data/
+/data/
+/garmin_analysis/data/
 plots/
-dashboard/data/*.json
+dashboard/data/*
 !dashboard/data/README.md
 
 # Python
