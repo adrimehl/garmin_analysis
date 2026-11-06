@@ -17,6 +17,21 @@ import calmap
 sns.set_style("darkgrid")
 
 
+def to_number(series):
+    """Convert a Garmin CSV column to float ("--" -> NaN, "1,234" -> 1234)."""
+    if pd.api.types.is_numeric_dtype(series):
+        return series.astype(float)
+    return pd.to_numeric(series.astype(str).str.replace(',', '', regex=False), errors='coerce')
+
+
+WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+
+
+def is_cycling(data):
+    """Rows of cycling activities (road, indoor, mountain bike)."""
+    return data["Activity Type"].str.contains('cycling', case=False, na=False) | (data["Activity Type"] == "Mountain Biking")
+
+
 class Activity:
     
     def __init__(self, filepath, savepath):
@@ -25,30 +40,30 @@ class Activity:
         
         #convert/adapt columns
         self.data['Activity Type'] = self.data['Activity Type'].str.replace('Resort Skiing/Snowboarding','Resort Skiing')
-        self.data['Start Time'] = self.data['Date']
-        self.data['Start Time'] = pd.to_datetime(self.data['Start Time'], utc=True)
-        self.data.index = self.data['Date'].apply(lambda x: pd.to_datetime(x).replace(hour=0, minute=0, second=0))
+        self.data['Start Time'] = pd.to_datetime(self.data['Date'], utc=True)
+        # calendar day of each activity (several activities per day are possible,
+        # so this is a column and not the index - a duplicate index breaks seaborn)
+        self.data['Day'] = pd.to_datetime(self.data['Date']).dt.normalize()
 
-        self.data['Elapsed Time'] = self.data['Elapsed Time'].str[:8]
-        self.data['Elapsed Time'] = pd.to_timedelta(self.data["Elapsed Time"])
-        #self.data['MinutesDuration'] = self.data['Elapsed Time'].dt.hour*60 + self.data['Elapsed Time'].dt.minute
+        self.data['Elapsed Time'] = pd.to_timedelta(self.data['Elapsed Time'].astype(str).str[:8], errors='coerce')
         self.data['MinutesDuration'] = self.data['Elapsed Time'].dt.total_seconds() / 60
-        self.data['End Time'] = pd.to_datetime(self.data['Start Time'] + self.data['Elapsed Time'], utc=True)
+        self.data['End Time'] = self.data['Start Time'] + self.data['Elapsed Time']
         self.data['weekday'] = self.data['Start Time'].dt.day_name()
-        self.data['Calories'] = pd.to_numeric(self.data['Calories'].str.replace(',',''), errors='coerce')
-        self.data['Distance'] = pd.to_numeric(self.data['Distance'], errors='coerce')
-        self.data['Total Ascent'] = pd.to_numeric(self.data['Total Ascent'].str.replace(',',''), errors='coerce')
-        
+
+        # Garmin writes "--" for missing values and "1,234" for thousands
+        for col in ['Calories', 'Distance', 'Total Ascent', 'Avg HR', 'Max HR', 'Avg Speed']:
+            if col in self.data.columns:
+                self.data[col] = to_number(self.data[col])
 
         #get total number of weekdays
-        self.num_weeks = (self.data['Start Time'].max() - self.data['Start Time'].min()).days // 7
+        self.num_weeks = max(1, (self.data['Start Time'].max() - self.data['Start Time'].min()).days // 7)
 
         #print summaray of data
         start=self.data["Start Time"].min()
         end = self.data["Start Time"].max()
         self.total_days = (end - start).days 
         print('Total days analysed: ' + str(self.total_days))
-        self.total_weeks= self.total_days/7
+        self.total_weeks = max(self.total_days, 1) / 7
         print('Total weeks analysed: ' + str(self.total_weeks))
         self.total_activities = len(self.data)
         print('Total activities: ' + str(self.total_activities))
@@ -56,14 +71,12 @@ class Activity:
   
     def number_activities_by_weekday(self):
     
-        self.data["weekday"] = pd.Categorical(self.data["weekday"], categories=
-            ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday', 'Sunday'],
-            ordered=True)
+        self.data["weekday"] = pd.Categorical(self.data["weekday"], categories=WEEKDAYS, ordered=True)
         
         weekday_counts = self.data["weekday"].value_counts()/self.num_weeks
         self.weekday_counts = weekday_counts.sort_index()
         plt.figure(figsize=(8, 5), dpi=300)
-        plt.bar(weekday_counts.index, weekday_counts.values)
+        plt.bar(self.weekday_counts.index, self.weekday_counts.values)
         plt.title("Number of Activities by Weekday")
         plt.xlabel("Weekday")
         plt.ylabel("Count")
@@ -72,66 +85,42 @@ class Activity:
         plt.close()
     
     def heatmaps(self):
-        self.data_heat = self.data.sort_values(by='Start Time')
-        start_date = self.data_heat["Start Time"].iloc[0]
-        end_date = self.data_heat["End Time"].iloc[-1]
-        self.data_heat["date"] = self.data_heat["Start Time"].dt.date
-        self.data_heat = self.data_heat.set_index("date")
-        
-        date_index = pd.date_range(start=start_date, end=end_date)
-        df_date = pd.DataFrame({'date': date_index})
-        df_date["date"] = df_date["date"]
-        
-        df_date['week_number'] = df_date['date'].dt.isocalendar().week
-        df_date['weekday'] = df_date['date'].dt.day_name()
-        df_date["date"] = df_date["date"].dt.date
-        df_date = df_date.set_index("date")
-        self.data_heat=self.data_heat.drop(["weekday"], axis =1 )
-        self.data_heat = df_date.join(self.data_heat)
-        
-        heat_df = self.data_heat[["week_number","Max HR","weekday"]]
-        # Convert the weekday column to a categorical variable with a specific order
-        weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        heat_df["weekday"] = pd.Categorical(heat_df["weekday"], categories=weekday_order)
-        heat_df["date2"] = heat_df.index
-        heat_df = heat_df[~heat_df["date2"].duplicated()]
-        heat_df = heat_df.drop(["date2"], axis =1)
-        heat_data = heat_df.pivot("week_number", "weekday",  "Max HR")
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
+        self._heatmap("Max HR", "max_hr_heatmap.png", "max")
+        self._heatmap("Calories", "calories_heatmap.png", "sum")
+
+    def _heatmap(self, column, filename, how):
+        # one value per calendar day, every day between first and last activity
+        per_day = self.data.groupby("Day")[column].agg(how, min_count=1) if how == "sum" else self.data.groupby("Day")[column].max()
+        days = pd.date_range(self.data["Day"].min(), self.data["Day"].max(), freq="D")
+        per_day = per_day.reindex(days)
+        iso = days.isocalendar()
+        heat_df = pd.DataFrame({
+            "week": iso["year"].astype(str) + "-W" + iso["week"].astype(str).str.zfill(2),
+            "weekday": pd.Categorical(days.day_name(), categories=WEEKDAYS, ordered=True),
+            column: per_day.values,
+        })
+        heat_data = heat_df.pivot(index="week", columns="weekday", values=column)
+
+        fig, ax = plt.subplots(figsize=(10, max(6, len(heat_data) * 0.25)))
         sns.heatmap(heat_data, cmap="YlGnBu", annot=True, fmt=".0f", cbar=False, ax=ax)
-        ax.set_ylabel("Week nr")
+        ax.set_ylabel("Week")
         ax.set_xlabel("Weekday")
-        ax.set_title("Max HR")
-        
-        plt.savefig(os.path.join(self.savepath, 'max_hr_heatmap.png'))
-        plt.close()
-    
-    
-        heat_df = self.data_heat[["week_number","Calories","weekday"]]
-        # Convert the weekday column to a categorical variable with a specific order
-        weekday_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        heat_df["weekday"] = pd.Categorical(heat_df["weekday"], categories=weekday_order)
-        heat_df["date2"] = heat_df.index
-        heat_df = heat_df[~heat_df["date2"].duplicated()]
-        heat_df = heat_df.drop(["date2"], axis =1)
-        heat_data = heat_df.pivot("week_number", "weekday",  "Calories")
-        
-        fig, ax = plt.subplots(figsize=(10, 6))
-        sns.heatmap(heat_data, cmap="YlGnBu", annot=True, fmt=".0f", cbar=False, ax=ax)
-        
-        ax.set_ylabel("Week nr")
-        ax.set_xlabel("Weekday")
-        ax.set_title("Calories")
-        
+        ax.set_title(column)
         plt.tight_layout()
-        plt.savefig(os.path.join(self.savepath, 'calories_heatmap.png'))
-        plt.close()
-        
+        plt.savefig(os.path.join(self.savepath, filename))
+        plt.close(fig)
+
     def calendarplots(self, columnname):
-        
-        startyear = self.data.index.year.min()
-        endyear = self.data.index.year.max()
+        # calmap needs one value per day on a DatetimeIndex
+        # sum per day (distance, calories, minutes), but heart rates must not be added up
+        grouped = self.data.groupby("Day")[columnname]
+        daily = (grouped.max() if "HR" in columnname else grouped.sum(min_count=1)).dropna()
+        if daily.empty:
+            print(f"No data for calendar plot '{columnname}', skipped.")
+            return
+
+        startyear = daily.index.year.min()
+        endyear = daily.index.year.max()
         numberrows=(endyear-startyear+1)//2 + 1
 
         fig = plt.figure(num=None, figsize=(26,numberrows*1.6), dpi=80, facecolor='w', edgecolor='k')
@@ -165,8 +154,8 @@ class Activity:
 
 
         for x in range(0,endyear-startyear+1):
-            cax = calmap.yearplot(self.data[columnname],year = startyear+x,
-                                         vmin=self.data[columnname].min(), vmax=self.data[columnname].max(),
+            cax = calmap.yearplot(daily, year=startyear+x,
+                                         vmin=daily.min(), vmax=daily.max(),
                                          daylabels=['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'],
                                          monthticks=1,
                                          linecolor='w',
@@ -202,6 +191,7 @@ class Activity:
         plt.title(columnname, fontsize =16)
 
         fig.savefig(os.path.join(self.savepath,"Activity_" + columnname + ".png"), bbox_inches='tight')
+        plt.close(fig)
         
         
 
@@ -241,21 +231,20 @@ class Activity:
     def duration_of_activities_detailed(self):
         # Create subplots with more spacing
         fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10,5))
-        plt.subplots_adjust(wspace=0.5)
         
         # First subplot
         sns.barplot(x="Activity Type", y="MinutesDuration", data=self.data, estimator=np.mean, ax=ax1)
         ax1.set_xlabel('Activity Type')
         ax1.set_ylabel('Average Duration (Minutes)')
         ax1.set_title('Average Duration (Minutes) of Each Activity')
-        ax1.set_xticklabels(labels=ax1.get_xticklabels(), rotation=90)
+        ax1.tick_params(axis='x', rotation=90)
         
         # Second subplot
-        sns.barplot(x="Activity Type", y="MinutesDuration", data=self.data, ci=None, estimator=np.sum, ax=ax2)
+        sns.barplot(x="Activity Type", y="MinutesDuration", data=self.data, errorbar=None, estimator=np.sum, ax=ax2)
         ax2.set_xlabel('Activity Type')
         ax2.set_ylabel('Total Duration (Minutes)')
         ax2.set_title('Total Duration (Minutes) of Each Activity')
-        ax2.set_xticklabels(labels=ax2.get_xticklabels(), rotation=90)
+        ax2.tick_params(axis='x', rotation=90)
         
         # Display the plot
         plt.tight_layout()
@@ -265,21 +254,20 @@ class Activity:
     def distance_of_activities(self):
         # Create subplots with more spacing
         fig, (ax1, ax2) = plt.subplots(ncols=2, figsize=(10,5))
-        plt.subplots_adjust(wspace=0.5)
         
         # First subplot
         sns.barplot(x="Activity Type", y="Distance", data=self.data, estimator=np.mean, ax=ax1)
         ax1.set_xlabel('Activity Type')
         ax1.set_ylabel('Average Distance')
         ax1.set_title('Average Distance of Each Activity')
-        ax1.set_xticklabels(labels=ax1.get_xticklabels(), rotation=90)
+        ax1.tick_params(axis='x', rotation=90)
         
         # Second subplot
-        sns.barplot(x="Activity Type", y="Distance", data=self.data, estimator=np.sum, ci=None, ax=ax2)
+        sns.barplot(x="Activity Type", y="Distance", data=self.data, estimator=np.sum, errorbar=None, ax=ax2)
         ax2.set_xlabel('Activity Type')
         ax2.set_ylabel('Total Distance')
         ax2.set_title('Total Distance of Each Activity')
-        ax2.set_xticklabels(labels=ax2.get_xticklabels(), rotation=90)
+        ax2.tick_params(axis='x', rotation=90)
         
         # Display the plot
         plt.tight_layout()
@@ -287,8 +275,7 @@ class Activity:
         plt.close()
     
     def speed_vs_distance(self):
-        df_bcs = self.data[(self.data["Activity Type"].str.contains('cycling', case=False, na=False)) | (self.data["Activity Type"] == "Mountain Biking")]
-        df_bcs['Avg Speed'] = df_bcs['Avg Speed'].astype(float)
+        df_bcs = self.data[is_cycling(self.data)]
         
         #plot avg speed vs distance
         plt.figure(figsize=(8, 5), dpi=300)
@@ -300,7 +287,7 @@ class Activity:
         
     def ascent_vs_distance(self):
         #plot distance vs elevation
-        df_bcs = self.data[(self.data["Activity Type"].str.contains('cycling', case=False, na=False)) | (self.data["Activity Type"] == "Mountain Biking")]
+        df_bcs = self.data[is_cycling(self.data)]
         
         plt.figure(figsize=(8, 5), dpi=300)
         sns.scatterplot(data=df_bcs, x="Distance", y="Total Ascent", hue="Activity Type")
@@ -310,16 +297,22 @@ class Activity:
         plt.close()
     
     def elevation_gain(self):
-        df_bcs = self.data[(self.data["Activity Type"].str.contains('cycling', case=False, na=False)) | (self.data["Activity Type"] == "Mountain Biking")]
-    
-        df_bcs = df_bcs.dropna(subset=['Total Ascent']) # Remove rows with NaN in 'Total Ascent' column
-        
-        ax = sns.barplot(x=df_bcs.index, y='Total Ascent', data=df_bcs)
+        df_bcs = self.data[is_cycling(self.data)].dropna(subset=['Total Ascent']).sort_values("Start Time")
+
+        fig, ax = plt.subplots(figsize=(10, 5), dpi=300)
+        sns.barplot(x=df_bcs["Day"].dt.strftime("%Y-%m-%d"), y=df_bcs['Total Ascent'], hue=df_bcs["Activity Type"], ax=ax)
         ax.set_title("Elevation Gain for cycling activities")
-        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5)) # Move legend outside plot
+        ax.set_xlabel("Date")
+        # show at most ~30 date labels
+        step = max(1, len(df_bcs) // 30)
+        for i, label in enumerate(ax.get_xticklabels()):
+            label.set_visible(i % step == 0)
+        ax.tick_params(axis='x', rotation=90)
+        if ax.get_legend() is not None:
+            ax.legend(loc='center left', bbox_to_anchor=(1, 0.5)) # Move legend outside plot
         plt.tight_layout()
         plt.savefig(os.path.join(self.savepath, 'elevation_gain.png'))
-        plt.close()
+        plt.close(fig)
     
     def heart_rate(self):
         # create figure and subplots
@@ -339,7 +332,7 @@ class Activity:
         fig.subplots_adjust(bottom=0.25)
         plt.tight_layout()
         plt.savefig(os.path.join(self.savepath, 'heart_rate.png'))
-        plt.close()
+        plt.close(fig)
     
     
     def calories(self):
@@ -366,21 +359,19 @@ class Activity:
         plt.close()
     
     def activities_by_hour_of_day(self):
-        self.data["start_hour"] = self.data["Start Time"].dt.time
-        self.data['hour'] = self.data['Start Time'].dt.hour
+        # local time of day as written in the CSV (not UTC)
+        self.data['hour'] = pd.to_datetime(self.data['Date']).dt.hour
         active_hours = self.data[["hour","Activity Type"]]
         
-        hours = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23]
         active_hours = active_hours.groupby(['hour', 'Activity Type']).size().unstack()
-        active_hours = active_hours.reindex(hours, fill_value=np.nan)
+        active_hours = active_hours.reindex(range(24))
         
-        plt.figure(figsize=(8, 5), dpi=300)
-        #plt.bar(active_hours.index, active_hours.values, stacked=True)
-        active_hours.plot(kind='bar', stacked=True)
+        fig, ax = plt.subplots(figsize=(8, 5), dpi=300)
+        active_hours.plot(kind='bar', stacked=True, ax=ax)
         plt.xlabel('Hour of Day')
         plt.ylabel('Number of Activities')
         plt.title('Activity Types by Hour of Day')
-        plt.legend(title='Activity Type', loc='upper left')
+        ax.legend(title='Activity Type', loc='upper left')
         plt.tight_layout()
         plt.savefig(os.path.join(self.savepath, 'activities_by_hour.png'))
         plt.close()

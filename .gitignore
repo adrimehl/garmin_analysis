@@ -1,0 +1,12 @@
+# Persönliche Garmin-Daten und erzeugte Grafiken nicht ins (öffentliche) Repo
+/data/
+/garmin_analysis/data/
+plots/
+dashboard/data/*
+!dashboard/data/README.md
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

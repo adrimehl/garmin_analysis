@@ -5,16 +5,18 @@ Created on Sun Jul  2 12:19:08 2023
 @author: ADRIMEHL
 """
 import os
+import matplotlib
+matplotlib.use("Agg")  # write plots to files, no window needed
 import activity_class as activity
 import sleep_class as sleep
 
 
-#add inputs
-filepath_activity = r'data/Activities (3).csv'      #path to activity csv-file
-folder_sleep = r'data\DI_CONNECT\DI-Connect-Wellness' #path to wellness json-folder
+#add inputs (os.path.join works on Windows, macOS and Linux)
+filepath_activity = os.path.join('data', 'Activities.csv')                     #path to activity csv-file
+folder_sleep = os.path.join('data', 'DI_CONNECT', 'DI-Connect-Wellness')       #path to wellness json-folder
 
 #outputs
-savepath = r'plots/'
+savepath = 'plots'
 
 
 def check_and_create_folder(folder_path):
@@ -60,4 +62,4 @@ if __name__ == "__main__":
     s.calendarplots('avgSleepStress',10,35)
     s.calendarplots('restlessMomentCount')
     
-    
+    
