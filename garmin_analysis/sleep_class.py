@@ -25,70 +25,57 @@ class Sleep:
         self.savepath = savepath
         #get all JSON sleep files and append all values to one list
         data = []
-        file_list = glob.glob(filepath + "/*_sleepData.json")
+        file_list = sorted(glob.glob(os.path.join(filepath, "*_sleepData.json")))
+        if not file_list:
+            raise FileNotFoundError(f"No '*_sleepData.json' files found in '{filepath}'")
         for i in file_list:
-            with open (i, 'r') as f:
+            with open(i, 'r', encoding='utf-8') as f:
                 data.extend(json.load(f))
-        
-        
-        # Create an empty DataFrame to store the extracted data
-        self.sleep_df = pd.DataFrame()
-        
-        # Loop over each dictionary in the list
-        for sleep_dict in data:
-            # Create a pandas Series from the dictionary and add it to the DataFrame
-            sleep_series = pd.Series(sleep_dict)
-            self.sleep_df = self.sleep_df.append(sleep_series, ignore_index=True)
-        
-        # Print the resulting DataFrame
-        self.sleep_df=self.sleep_df.fillna(0)
+
+        # one row per night (DataFrame.append was removed in pandas 2.0)
+        self.sleep_df = pd.DataFrame(data)
+        # nights without start/end timestamps (e.g. watch not worn) cannot be analysed
+        self.sleep_df = self.sleep_df.dropna(subset=["sleepStartTimestampGMT", "sleepEndTimestampGMT"])
+        self.sleep_df = self.sleep_df.drop_duplicates(subset="calendarDate", keep="last")
+
         self.sleep_df['calendarDate'] = pd.to_datetime(self.sleep_df['calendarDate'])
+        self.sleep_df = self.sleep_df.sort_values('calendarDate')
         self.sleep_df['weekday'] = self.sleep_df['calendarDate'].dt.day_name()
-        def is_weekend(day):
-            if day in ['Saturday', 'Sunday']:
-                return 'Weekend'
-            else:
-                return 'Regular day'
-        
-        # Apply the function to the day column and create a new column called 'day_type'
-        self.sleep_df['day_type'] = self.sleep_df['weekday'].apply(is_weekend)
-        self.sleep_df
-        
+        self.sleep_df['day_type'] = self.sleep_df['weekday'].isin(['Saturday', 'Sunday']).map({True: 'Weekend', False: 'Regular day'})
+
         self.sleep_df["start_date"] = pd.to_datetime(self.sleep_df["sleepStartTimestampGMT"])
         self.sleep_df["end_date"] = pd.to_datetime(self.sleep_df["sleepEndTimestampGMT"])
         self.sleep_df["start_time"] = self.sleep_df["start_date"].dt.time
         self.sleep_df["end_time"] = self.sleep_df["end_date"].dt.time
         self.sleep_df['duration'] = (self.sleep_df['end_date'] - self.sleep_df['start_date']).dt.total_seconds() / 3600
         self.sleep_df['week_number'] = self.sleep_df['calendarDate'].dt.isocalendar().week
-        self.sleep_df['overallScore'] = self.sleep_df['sleepScores'].apply(lambda x: x['overallScore'])  
+        # older/partial nights have no sleepScores entry
+        if 'sleepScores' in self.sleep_df.columns:
+            self.sleep_df['overallScore'] = self.sleep_df['sleepScores'].apply(
+                lambda x: x.get('overallScore') if isinstance(x, dict) else np.nan)
+        # numeric columns that are missing on some nights stay NaN (not 0), so they
+        # show as "no data" in the calendar plots instead of pulling averages down
+        for col in ['avgSleepStress', 'restlessMomentCount', 'awakeCount']:
+            if col in self.sleep_df.columns:
+                self.sleep_df[col] = pd.to_numeric(self.sleep_df[col], errors='coerce')
         self.sleep_df.index = self.sleep_df['calendarDate']
         
         
     def sleep_duration(self):
-        df = self.sleep_df[["start_time","end_time","duration","day_type","calendarDate"]]
-        df["Day"] = df.index
+        # Plot every night on one shared "evening -> morning" axis: times before
+        # 14:00 belong to the morning after, so they are moved one day later.
+        df = self.sleep_df[["start_time", "end_time", "duration", "day_type", "calendarDate"]].copy()
         today = datetime.now().date()
-        
-        for index, row in df.iterrows():
-            start_time = row['start_time']
-            end_time = row['end_time']
-            if start_time < datetime.strptime('14:00:00', '%H:%M:%S').time():
-                start_date = today + timedelta(days=1)
-            else:
-                start_date = today
-        
-            if end_time < start_time:
-                end_date = start_date + timedelta(days=1)
-            else:
-                end_date = start_date
-        
-            start_datetime = datetime.combine(start_date, start_time)
-            end_datetime = datetime.combine(end_date, end_time)
-        
-        
-            df.at[index, 'start_time'] = start_datetime
-            df.at[index, 'end_time'] = end_datetime
-            
+        noon = datetime.strptime('14:00:00', '%H:%M:%S').time()
+
+        starts, ends = [], []
+        for start_time, end_time in zip(df['start_time'], df['end_time']):
+            start_date = today + timedelta(days=1) if start_time < noon else today
+            end_date = start_date + timedelta(days=1) if end_time < start_time else start_date
+            starts.append(datetime.combine(start_date, start_time))
+            ends.append(datetime.combine(end_date, end_time))
+        df['start_time'] = starts
+        df['end_time'] = ends
 
         fig = px.timeline(df, x_start="start_time", x_end="end_time", y="calendarDate", color="day_type", width=800, height=1000)
         fig.update_yaxes(autorange="reversed") # otherwise tasks are listed from the bottom up
@@ -101,11 +88,8 @@ class Sleep:
         endyear = self.sleep_df['calendarDate'].dt.year.max()
         numberrows=(endyear-startyear+1)//2 + 1
         
-        df = self.sleep_df[columnname].to_frame()
-        if minimum is not None:
-            df[columnname] = df[columnname].apply(lambda x: minimum if x < minimum else x)
-        if maximum is not None:
-            df[columnname] = df[columnname].apply(lambda x: maximum if x > maximum else x)
+        df = self.sleep_df[columnname].astype(float).to_frame()
+        df[columnname] = df[columnname].clip(lower=minimum, upper=maximum)
 
         fig = plt.figure(num=None, figsize=(26,numberrows*1.6), dpi=80, facecolor='w', edgecolor='k')
 
@@ -173,6 +157,7 @@ class Sleep:
         plt.title(columnname, fontsize =16)
 
         fig.savefig(os.path.join(self.savepath,"Sleepscore_" + columnname + ".pdf"), bbox_inches='tight')
+        plt.close(fig)
         
         
 
